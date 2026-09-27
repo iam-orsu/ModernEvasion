@@ -14,7 +14,7 @@ You have zero C# programming experience. This document fixes that. By the end, y
 
 ## Why This Is Next
 
-Documents 05 through 10 each build a working evasion loader in C#. Every loader reads data from a file, changes it, puts it into memory, and tells the computer to run it. If you do not understand how C# stores data, repeats actions, reads files, and organizes code into reusable pieces, you will be copying code without understanding it. When Defender catches your loader and you need to change the code to avoid detection, you will not know what to change or why.
+Documents 05 through 10 each build a working evasion loader in C#. Every loader reads data from a file, changes it, puts it into RAM (your computer's temporary working storage, more on this in a moment), and tells the computer to run it. If you do not understand how C# stores data, repeats actions, reads files, and organizes code into reusable pieces, you will be copying code without understanding it. When Defender catches your loader and you need to change the code to avoid detection, you will not know what to change or why.
 
 You do not need to learn all of C#. You need a specific set of skills: storing and changing data, working with raw bytes, repeating operations, organizing code into functions, reading files, and accepting input from the command line. That is what this document teaches, and every single concept here appears in the loaders.
 
@@ -78,7 +78,7 @@ class Program
 {
 ```
 
-In C#, all your code has to live inside something called a class. Think of a class as a container. You name it (here it is called `Program` but the name does not matter), and everything between the curly braces `{` and `}` belongs to that container.
+In C#, all your code has to live inside something called a class. A class is a named section of code. You give it a name (here it is called `Program` but the name does not matter), and everything between the opening curly brace `{` and the closing curly brace `}` belongs to that section. Every C# program needs at least one class.
 
 ```csharp
     static void Main(string[] args)
@@ -120,7 +120,7 @@ That is your first C# program. Every program in this curriculum follows this sam
 
 ### Part 2: Variables - Storing Data
 
-A program needs to store information while it runs. The port number your payload connects to, the IP address of your attacker machine, the name of a process you want to target. In C#, you store information in variables.
+When your program runs, it needs to hold onto information. The port number your payload connects to, the IP address of your attacker machine, the name of a process you want to target. All of this needs to be stored somewhere while the program is running. In C#, you store information in variables.
 
 A variable has two parts: a type (what kind of data it holds) and a name (how you refer to it). You create a variable and give it a value like this:
 
@@ -149,7 +149,15 @@ Here are the variable types you will use in the loaders:
         long bigNumber = 0x7FFE00000000;
 ```
 
-`int` holds whole numbers. You use it for process IDs, port numbers, and return values from functions. `uint` is the same but only holds positive numbers (no negatives). Windows functions use `uint` for things like memory sizes and permission flags. `byte` holds a single byte, which is a number from 0 to 255. This is the building block of all raw data, and you will work with lots of bytes because shellcode is just a sequence of bytes. `bool` holds either `true` or `false`, nothing else. You use it to check if something worked or failed. `long` holds very large numbers. You need it for 64-bit memory addresses on modern Windows.
+`int` holds whole numbers. You use it for process IDs, port numbers, and return values from functions.
+
+`uint` is the same but only holds positive numbers (no negatives). Windows functions use `uint` for things like sizes and permission flags.
+
+`byte` holds a single byte, which is a number from 0 to 255. This is the building block of all raw data. Shellcode is just a sequence of bytes, so you will work with lots of bytes throughout this curriculum.
+
+`bool` holds either `true` or `false`, nothing else. You use it to check if something worked or failed.
+
+`long` holds very large numbers. You need it for 64-bit addresses on modern Windows.
 
 The `0x` prefix means the number is written in hexadecimal (base 16) instead of decimal (base 10). Hexadecimal is used everywhere in Windows programming. The number `0xFF` is the same as 255 in decimal. The number `0x4A` is the same as 74. You do not need to memorize conversions because C# handles them, but you need to recognize that `0x` means hex.
 
@@ -185,7 +193,7 @@ Notice that when you print the byte `0xFF`, it shows as `255`. That is because C
 
 ### Part 3: Making Decisions with If Statements
 
-Your program needs to make decisions. Did the file load successfully? Did the memory allocation work? Is the user running the program with the right arguments? You handle all of this with `if` statements.
+Your program needs to make decisions while it runs. Did the file load successfully? Did the request for RAM work? Is the user running the program with the right arguments? You handle all of this with `if` statements.
 
 ```csharp
         int result = 0;
@@ -213,7 +221,7 @@ You can add an `else` block for what happens when the condition is false:
 
 If `result` is 0, you see the success message. If `result` is anything other than 0, you see the failure message. Only one of the two blocks runs, never both.
 
-In the loaders, you see this pattern after every Windows function call. Windows functions return a value that tells you whether they worked. Typically, 0 means success and anything else means failure. Or the function returns a memory address, and if it returns 0 (a null address), it means it failed. The loader checks the return value and exits if something went wrong:
+In the loaders, you see this pattern after every Windows function call. Windows functions return a value that tells you whether they worked. Typically, 0 means success and anything else means failure. Or the function returns a RAM address, and if it returns 0 (a null address), it means it failed. The loader checks the return value and exits if something went wrong:
 
 ```csharp
         IntPtr memoryAddress = IntPtr.Zero;
@@ -225,7 +233,7 @@ In the loaders, you see this pattern after every Windows function call. Windows 
         }
 ```
 
-`IntPtr` is a special type that holds a memory address. `IntPtr.Zero` is the null address (address 0), which Windows returns when a function fails. The `return;` statement stops the program immediately. There is no point continuing if the memory allocation failed because everything after it depends on having that memory.
+`IntPtr` is a special type that holds a RAM address. `IntPtr.Zero` is the null address (address 0), which Windows returns when a function fails. The `return;` statement stops the program immediately. There is no point continuing if the RAM request failed because everything after it depends on having that RAM.
 
 The `[+]` and `[-]` prefixes in the messages are a convention in security tools. `[+]` means something worked, `[-]` means something failed, `[*]` means general information. You will see this throughout the loaders.
 
@@ -276,13 +284,13 @@ Output:
 [-] File not loaded.
 ```
 
-The program stops after "File not loaded" because `return;` exits Main. The last line never runs. This is exactly how the loaders handle errors: check each step, bail out if it fails, continue if it succeeds.
+The program stops after "File not loaded" because `return;` exits Main. The last line never runs. This is exactly how the loaders handle errors: check each step, stop if it fails, continue if it succeeds.
 
 ### Part 4: Loops - Repeating Actions
 
-Imagine you need to print the numbers 1 through 10. You could write 10 separate `Console.WriteLine` calls, one for each number. But that is tedious, and if you needed to print 1 through 10000, writing 10000 lines is insane. A loop does the same action multiple times automatically.
+Say you need to print the numbers 1 through 10. You could write 10 separate `Console.WriteLine` calls, one for each number. But that is tedious, and if you needed to print 1 through 10000, writing 10000 lines is not practical. A loop does the same action multiple times automatically.
 
-The simplest way to understand a loop: you give it a starting point, a stopping condition, and a step size. It repeats the code inside it, adjusting the step each time, until the stopping condition is met.
+You give it a starting point, a stopping condition, and a step size. It repeats the code inside it, adjusting the step each time, until the stopping condition is met.
 
 ```csharp
         for (int i = 1; i <= 10; i++)
@@ -313,7 +321,7 @@ Here is what the three parts inside the parentheses do:
 
 `i++` adds 1 to `i` after each repetition. So `i` goes 1, 2, 3, 4, 5, 6, 7, 8, 9, 10. When `i` becomes 11, the condition `i <= 10` is false, and the loop stops.
 
-Now here is why loops matter for evasion. Shellcode is a sequence of bytes. A typical shellcode payload is 400 to 600 bytes long. If you want to change every byte (for example, to encrypt it), you need to visit each byte one by one and apply an operation to it. A loop does this:
+Now here is why loops matter for evasion. Shellcode is a sequence of bytes. A typical shellcode payload is 400 to 600 bytes long. If you want to change every byte (for example, to encrypt it), you need to go through each byte one by one and apply an operation to it. A loop does this:
 
 ```csharp
         byte[] data = new byte[] { 10, 20, 30, 40, 50 };
@@ -333,9 +341,9 @@ Byte 3 = 40
 Byte 4 = 50
 ```
 
-`data.Length` gives you the total number of items in the array (5 in this case). The counter starts at 0 because in C#, the first item in an array is at position 0, the second at position 1, and so on. The loop runs while `i < 5`, meaning it runs for i = 0, 1, 2, 3, 4. That is all 5 positions.
+`data.Length` gives you the total number of items in the array (5 in this case). The counter starts at 0 because in C#, the first item in an array is at position 0, the second at position 1, and so on. The loop runs while `i < 5`, meaning it runs for i = 0, 1, 2, 3, 4. That covers all 5 positions.
 
-When you encrypt shellcode, the loop visits each byte, applies the encryption operation, and stores the result. When you search through a list of running processes, the loop checks each one. When you build a string character by character, the loop adds each character. Loops are in every single loader.
+When you encrypt shellcode, the loop goes through each byte, applies the encryption operation, and stores the result. When you search through a list of running processes, the loop checks each one. When you build a string character by character, the loop adds each character. Loops are in every single loader.
 
 Here is the complete example:
 
@@ -636,11 +644,9 @@ Output:
 
 Now that you understand variables, arrays, loops, and functions, you are ready for the first concept that directly connects to evasion.
 
-The problem: Defender has a database of byte patterns that belong to known malware. When your shellcode sits in a file on disk, Defender reads the file, compares its bytes against the database, and if there is a match, it blocks the file. So you need a way to change the bytes in the file so Defender does not recognize them, but your loader can change them back when it is time to run the code.
+Here is the problem. Defender has a database of byte patterns that belong to known malware. When your shellcode sits in a file on disk, Defender reads the file, compares its bytes against the database, and if there is a match, it blocks the file. So you need a way to change the bytes in the file so Defender does not recognize them, but your loader can change them back when it is time to run the code.
 
-The solution is XOR, which stands for "exclusive or." XOR is an operation you perform on two numbers. For each pair of bits (the individual 0s and 1s that make up a number), XOR gives you 1 if the bits are different and 0 if they are the same.
-
-But you do not need to think about individual bits. The practical thing you need to know is this: if you XOR a number with a key, you get a different number. If you XOR that result with the same key again, you get the original number back. XOR is both the lock and the key.
+The solution is XOR, which stands for "exclusive or." XOR is an operation you perform on two numbers. The practical thing you need to know is this: if you XOR a number with a key, you get a different number. If you XOR that result with the same key again, you get the original number back. XOR is both the lock and the key.
 
 Let me show you with a single byte first:
 
@@ -661,7 +667,7 @@ The `^` symbol is XOR in C#. This takes `0xFC` and XORs it with `0x4A`. The resu
         byte decrypted = (byte)(encrypted ^ key);
 ```
 
-Now XOR the encrypted value `0xB6` with the same key `0x4A` again. The result is `0xFC`, the original value. That is the magic of XOR: apply it once to encrypt, apply it again with the same key to decrypt.
+Now XOR the encrypted value `0xB6` with the same key `0x4A` again. The result is `0xFC`, the original value. That is the whole point of XOR: apply it once to encrypt, apply it again with the same key to decrypt.
 
 ```csharp
         Console.WriteLine("Original:  0x" + original.ToString("X2"));
@@ -694,7 +700,7 @@ We have the shellcode bytes and a key. We create an empty array the same size as
         }
 ```
 
-The loop visits each byte in the shellcode array, XORs it with the key, and stores the result in the encrypted array. After this loop, `encrypted_data` contains bytes that look nothing like the original shellcode. Defender will not recognize them.
+The loop goes through each byte in the shellcode array, XORs it with the key, and stores the result in the encrypted array. After this loop, `encrypted_data` contains bytes that look nothing like the original shellcode. Defender will not recognize them.
 
 To decrypt, run the exact same loop on the encrypted data:
 
@@ -753,7 +759,7 @@ Encrypted: B6 02 C9 AE BA
 Decrypted: FC 48 83 E4 F0
 ```
 
-The encrypted bytes (B6 02 C9 AE BA) are completely different from the original (FC 48 83 E4 F0). Defender has no signature for B6 02 C9 AE BA because it is not real shellcode, it is encrypted data. When the loader runs, it decrypts the data in memory and then executes it. Defender's file scanner only sees the encrypted version on disk.
+The encrypted bytes (B6 02 C9 AE BA) are completely different from the original (FC 48 83 E4 F0). Defender has no signature for B6 02 C9 AE BA because it is not real shellcode, it is encrypted data. When the loader runs, it decrypts the data in RAM and then executes it. Defender's file scanner only sees the encrypted version on disk.
 
 ### Part 8: Multi-Byte XOR Keys
 
@@ -776,7 +782,7 @@ The function takes two byte arrays: the data to encrypt/decrypt, and the key. It
         }
 ```
 
-`i % key.Length` is the key part. The `%` operator gives you the remainder after division. If the key is 4 bytes long, then `0 % 4 = 0`, `1 % 4 = 1`, `2 % 4 = 2`, `3 % 4 = 3`, `4 % 4 = 0`, `5 % 4 = 1`, and so on. It cycles through positions 0, 1, 2, 3, 0, 1, 2, 3 forever. This means the key repeats over the entire data, no matter how long the data is.
+`i % key.Length` is the important part. The `%` operator gives you the remainder after division. If the key is 4 bytes long, then `0 % 4 = 0`, `1 % 4 = 1`, `2 % 4 = 2`, `3 % 4 = 3`, `4 % 4 = 0`, `5 % 4 = 1`, and so on. It cycles through positions 0, 1, 2, 3, 0, 1, 2, 3 forever. This means the key repeats over the entire data, no matter how long the data is.
 
 ```csharp
         return result;
@@ -858,7 +864,7 @@ First, add `System.IO` at the top of your file. IO stands for Input/Output and c
         byte[] loaded = File.ReadAllBytes("test.bin");
 ```
 
-`File.ReadAllBytes` reads the entire file into a byte array. After this line, `loaded` contains the same 5 bytes that were written to the file. This is the main way every loader gets shellcode from disk into memory.
+`File.ReadAllBytes` reads the entire file into a byte array. After this line, `loaded` contains the same 5 bytes that were written to the file. This is the main way every loader gets shellcode from disk into RAM.
 
 ```csharp
         Console.WriteLine("Wrote " + testData.Length + " bytes to file.");
@@ -1050,19 +1056,23 @@ Output:
 [+] Key bytes: 0x4A 0x7F 0x2B 0x1C
 ```
 
-### Part 11: The Marshal Class - Bridging C# and Raw Memory
+### Part 11: The Marshal Class - Moving Data Between C# and Raw RAM
 
 This is the last concept before we move to Windows API calls in Document 03. It is slightly more advanced but it is critical for understanding what the loaders do.
 
-C# normally manages memory for you. You create a byte array, C# finds space for it, and when you are done, C# cleans it up. But Windows API functions work with raw memory addresses, not C# arrays. You need a bridge between the C# world and the raw memory world. That bridge is the `Marshal` class.
+Your computer has RAM (Random Access Memory), which is a rectangular chip on your motherboard that stores data temporarily while programs run. When you run a C# program, C# manages a section of RAM for you automatically. It decides where your variables and arrays go, it cleans them up when you are done, and it can even move them around. This section of RAM that C# controls is called managed memory.
+
+But Windows API functions do not work with C#'s managed memory. They work with raw RAM addresses directly. When you call VirtualAlloc (which you will learn in Document 03) to request RAM from Windows, Windows gives you a raw address in RAM. That address is not managed by C#. C# does not know what is stored there, cannot clean it up, and cannot move it. This section of RAM is called unmanaged memory.
+
+The problem: your shellcode starts as a C# byte array (in managed memory), but it needs to end up at a raw RAM address (in unmanaged memory) where the CPU can execute it. You need a way to copy data from one to the other. That is what the `Marshal` class does.
 
 ```csharp
 using System.Runtime.InteropServices;
 ```
 
-Add this at the top. The `Marshal` class lives in this namespace.
+Add this at the top. The `Marshal` class lives in this section of C#.
 
-The most important Marshal function for the loaders is `Marshal.Copy`. It copies bytes from a C# byte array to a raw memory address:
+The most important Marshal function for the loaders is `Marshal.Copy`. It copies bytes from a C# byte array to a raw RAM address:
 
 ```csharp
         byte[] data = new byte[] { 0xFC, 0x48, 0x83, 0xE4, 0xF0 };
@@ -1070,15 +1080,15 @@ The most important Marshal function for the loaders is `Marshal.Copy`. It copies
         IntPtr memory = Marshal.AllocHGlobal(data.Length);
 ```
 
-`Marshal.AllocHGlobal` allocates a block of raw (unmanaged) memory and returns its address as an `IntPtr`. This is similar to what VirtualAlloc does in the loaders, but simpler. The address is a number that tells the computer exactly where in its memory the block starts.
+`Marshal.AllocHGlobal` requests a block of raw (unmanaged) RAM and returns its address as an `IntPtr`. This is similar to what VirtualAlloc does in the loaders, but simpler. The address is a number that tells the CPU exactly where in RAM that block starts.
 
 ```csharp
         Marshal.Copy(data, 0, memory, data.Length);
 ```
 
-`Marshal.Copy` takes 4 arguments: the source byte array, the starting position in the array (0 means start from the beginning), the destination memory address, and how many bytes to copy. After this call, the raw memory at address `memory` contains the same bytes as the `data` array.
+`Marshal.Copy` takes 4 arguments: the source byte array, the starting position in the array (0 means start from the beginning), the destination RAM address, and how many bytes to copy. After this call, the raw RAM at address `memory` contains the same bytes as the `data` array.
 
-This is the core operation in every loader. The loader reads shellcode into a byte array, allocates memory using a Windows function, and then copies the shellcode bytes into that memory using Marshal.Copy. The shellcode is now in memory and ready to execute.
+This is the core operation in every loader. The loader reads shellcode into a byte array, requests RAM using a Windows function, and then copies the shellcode bytes into that RAM using Marshal.Copy. The shellcode is now in RAM and ready to execute.
 
 After copying, you should clear the original byte array so the shellcode does not sit in two places at once:
 
@@ -1086,20 +1096,20 @@ After copying, you should clear the original byte array so the shellcode does no
         Array.Clear(data, 0, data.Length);
 ```
 
-`Array.Clear` sets every byte in the array to 0. This is a security practice. If Defender's memory scanner runs, the shellcode exists only in the allocated memory, not in the C# array.
+`Array.Clear` sets every byte in the array to 0. This is a security practice. If Defender's memory scanner runs, the shellcode exists only in the requested RAM, not in the C# array.
 
 ```csharp
         byte firstByte = Marshal.ReadByte(memory);
         Console.WriteLine("First byte at address: 0x" + firstByte.ToString("X2"));
 ```
 
-`Marshal.ReadByte` reads a single byte from a raw memory address. This is useful for verifying that the copy worked.
+`Marshal.ReadByte` reads a single byte from a raw RAM address. This is useful for verifying that the copy worked.
 
 ```csharp
         Marshal.FreeHGlobal(memory);
 ```
 
-`Marshal.FreeHGlobal` releases the allocated memory. In the loaders, you usually do not free memory because the shellcode needs to keep running in that memory. But for a test like this, you clean up.
+`Marshal.FreeHGlobal` gives the RAM back to the system. In the loaders, you usually do not free RAM because the shellcode needs to keep running in it. But for a test like this, you clean up.
 
 Here is the complete program:
 
@@ -1142,7 +1152,7 @@ Output:
 [+] Memory freed.
 ```
 
-The memory address will be different every time you run it because the operating system assigns addresses dynamically.
+The address will be different every time you run it because the operating system assigns addresses dynamically.
 
 ### Part 12: Building Strings from Numbers (Avoiding Static Detection)
 
@@ -1182,7 +1192,7 @@ The `params` keyword means you can pass any number of values and C# automaticall
 
 And C# treats `33, 77, 83, 73` as the array `{33, 77, 83, 73}`.
 
-The compiled binary contains the numbers 32, 33, 77, 83, 73, which are meaningless to Defender's scanner. The string "Amsi" is constructed only at runtime, in memory, where the static file scanner cannot see it.
+The compiled binary contains the numbers 32, 33, 77, 83, 73, which are meaningless to Defender's scanner. The string "Amsi" is constructed only at runtime, in RAM, where the static file scanner cannot see it.
 
 Here is the complete program:
 
@@ -1247,28 +1257,28 @@ After completing this document, verify you can do each of these:
 - [ ] XOR-encrypt a byte array with a multi-byte key using the modulo cycle
 - [ ] Read a binary file into a byte array with File.ReadAllBytes
 - [ ] Parse command-line arguments from args
-- [ ] Use Marshal.Copy to move bytes between a C# array and a memory address
+- [ ] Use Marshal.Copy to move bytes between a C# array and a RAM address
 - [ ] Build a string from integer offsets using FromOffsets
 
 ## What Was Gained
 
 You now know enough C# to understand every loader in this curriculum. Here is specifically what connects to the loaders:
 
-**Variables and types** let you store process IDs, port numbers, memory addresses, and the results of Windows function calls. The `IntPtr` type holds memory addresses returned by functions like VirtualAlloc.
+**Variables and types** let you store process IDs, port numbers, RAM addresses, and the results of Windows function calls. The `IntPtr` type holds RAM addresses returned by functions like VirtualAlloc.
 
-**If statements** are used after every Windows function call to check whether it succeeded or failed. If memory allocation fails, the loader stops. If a process cannot be opened, the loader stops. This error-checking pattern appears dozens of times across the 8 loaders.
+**If statements** are used after every Windows function call to check whether it succeeded or failed. If the RAM request fails, the loader stops. If a process cannot be opened, the loader stops. This error-checking pattern appears dozens of times across the 8 loaders.
 
-**Loops** process shellcode byte by byte. XOR encryption, hex conversion, building strings from offsets, and printing diagnostic output all use loops to walk through arrays.
+**Loops** process shellcode byte by byte. XOR encryption, hex conversion, building strings from offsets, and printing diagnostic output all use loops to go through arrays.
 
-**Byte arrays** are the core data structure. Shellcode is a byte array. XOR keys are byte arrays. The patch bytes that disable AMSI and ETW are byte arrays. Everything the loaders manipulate is bytes.
+**Byte arrays** are the core data structure. Shellcode is a byte array. XOR keys are byte arrays. The patch bytes that disable AMSI and ETW are byte arrays. Everything the loaders work with is bytes.
 
 **Functions** organize code into reusable pieces. TransformData handles XOR. HexToBytes converts command-line keys. FromOffsets builds strings. PatchTelemetry disables ETW. PatchScanner disables AMSI. Each piece of functionality is a function.
 
-**File reading** gets shellcode from disk into memory. Every loader starts by reading a .bin file with File.ReadAllBytes.
+**File reading** gets shellcode from disk into RAM. Every loader starts by reading a .bin file with File.ReadAllBytes.
 
 **Command-line arguments** make the loaders flexible. The same binary works with different payloads, different keys, and different target processes.
 
-**Marshal.Copy** moves bytes from C# space into the raw memory that Windows functions work with. This is the step between "shellcode in a byte array" and "shellcode in executable memory."
+**Marshal.Copy** moves bytes from C# managed memory into raw RAM that Windows functions work with. This is the step between "shellcode in a byte array" and "shellcode in executable RAM."
 
 **FromOffsets** hides sensitive strings from static scanners. Without it, every loader would contain strings like "AmsiScanBuffer" and "EtwEventWrite" that Defender immediately flags.
 
@@ -1316,4 +1326,4 @@ Blue team action: monitor for executables that import suspicious API combination
 
 ## What Comes Next
 
-Start Document 03 (lab/materials/03_windows_api.md). It teaches how C# talks to the Windows operating system using P/Invoke and DllImport. You will learn to call Windows functions that allocate memory, change memory permissions, and create threads. These are the building blocks that every loader uses to actually execute shellcode.
+Start Document 03 (lab/materials/03_windows_api.md). It teaches how C# talks to the Windows operating system. You will learn to call Windows functions that request RAM, change RAM permissions, and create threads. These are the building blocks that every loader uses to actually execute shellcode.
