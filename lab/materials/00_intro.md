@@ -175,18 +175,18 @@ What you learn:
 ### Loader 02 - XOR Encoder/Decoder
 **File:** `lab/loaders/02_xor_encoder.cs`
 
-This loader has two modes. In encoder mode, it takes raw shellcode and XOR-encrypts every byte with a key you provide, producing an encrypted file that looks like random data. In decoder/loader mode, it reads the encrypted file, XOR-decrypts it in RAM, and runs the decrypted shellcode.
+This loader has two modes. In encoder mode, it takes raw shellcode and XOR-encrypts every byte with a key you provide, producing an encrypted file that looks like random data. In decoder/loader mode, it reads the encrypted file, XOR-decrypts it in RAM, and attempts to execute the decrypted shellcode.
 
-XOR encryption is simple but effective against static signature scanning. Defender's signature database contains byte patterns from known payloads. When you XOR every byte with a key, every byte changes. The encrypted file does not match any signature.
+XOR encryption solves one specific problem: the encrypted shellcode file no longer matches Defender's signature database. The raw msfvenom bytes that got Loader 01's shellcode quarantined on disk are now scrambled. Defender's static scanner cannot match what it cannot recognize.
 
-When the loader runs, it decrypts the shellcode in RAM (where Defender's file scanner cannot see it) and runs it.
+**However, this loader still gets caught.** The loader binary itself still uses DllImport for VirtualAlloc and CreateThread (which puts those function names in the import table), and still uses PAGE_EXECUTE_READWRITE (0x40). Defender's behavioral detection and API hooks still see the injection pattern. XOR encryption defeats Layer 1 (static file scanning) but not the other five layers.
 
 What you learn:
 
 - How XOR encryption works (each byte is combined with a key byte using XOR, and applying XOR again with the same key restores the original byte)
 - Why encrypted shellcode bypasses static signatures (the byte patterns Defender looks for do not exist in the encrypted file)
 - The difference between what is on the hard drive and what is in RAM (encrypted on the hard drive, decrypted only in RAM)
-- Why XOR alone is not enough (Defender has other detection layers beyond file scanning)
+- Why XOR alone is not enough (the encrypted file survives disk scanning, but the loader binary and its runtime behavior are still detected by Defender's other layers)
 
 ---
 
@@ -231,7 +231,7 @@ What you learn:
 ### Loader 05 - Reflective Injector
 **File:** `lab/loaders/05_reflective_injector.cs`
 
-Instead of running your code in your own program (which Defender is watching), this loader writes your code into the RAM of another program that is already running. You pick a program that Windows trusts, like explorer.exe (the desktop and taskbar) or svchost.exe (a system service host).
+Instead of running your code in your own program, this loader writes your code into the RAM of another program that is already running. You pick a program that Windows trusts, like explorer.exe (the desktop and taskbar) or svchost.exe (a system service host).
 
 The process:
 
@@ -240,7 +240,7 @@ The process:
 3. Write your shellcode into that RAM
 4. Create a thread inside that program to run it
 
-The result is that your shellcode runs inside a trusted system process. In Task Manager, only explorer.exe shows up. Your loader program can exit immediately after injection.
+This loader teaches the cross-process injection TECHNIQUE, but **Defender will catch this loader on its own.** It uses DllImport for WriteProcessMemory and CreateRemoteThread, which puts those function names in the import table. Defender watches for the OpenProcess + VirtualAllocEx + WriteProcessMemory + CreateRemoteThread combination specifically. To use cross-process injection without getting caught, you need to combine it with dynamic API resolution and ETW/AMSI patching from Loaders 03, 04, and 07. Loader 08 (combined evasion) does exactly that.
 
 What you learn:
 
@@ -248,7 +248,8 @@ What you learn:
 - How VirtualAllocEx allocates RAM inside another program (the "Ex" means external, meaning another program)
 - How WriteProcessMemory copies bytes from your program into another program
 - How CreateRemoteThread creates a thread inside another program that starts running your shellcode
-- Why running inside a legitimate process provides cover
+- Why running inside a legitimate process provides cover (when combined with other evasion techniques)
+- Why cross-process injection alone is not enough (Defender watches for the API combination)
 
 ---
 
@@ -269,12 +270,15 @@ An APC is a function that Windows queues to run on a specific thread. When the l
 
 The name "Early Bird" comes from the fact that your code runs at the very beginning of the process's life, before the process has loaded its own DLL files.
 
+Like Loader 05, **this loader on its own gets caught by Defender.** It uses DllImport for CreateProcess, VirtualAllocEx, WriteProcessMemory, and QueueUserAPC, which all show up in the import table. The CREATE_SUSPENDED + write + QueueUserAPC + ResumeThread sequence is a known injection pattern that Defender watches for. To use APC injection without getting caught, you combine it with the evasion techniques from Loaders 03, 04, and 07, which is what Loader 08 does.
+
 What you learn:
 
 - How CREATE_SUSPENDED works (the program is created but its main thread is frozen)
 - What an APC is (a function that Windows queues to run on a specific thread)
 - How this differs from process hollowing (no code removal, no suspicious NtUnmapViewOfSection call)
-- Why this is harder to detect than CreateRemoteThread (APCs are a normal Windows mechanism used by legitimate system code)
+- Why the APC technique itself is less suspicious than CreateRemoteThread (APCs are a normal Windows mechanism), but the DllImport pattern still gets caught
+- Why injection techniques need to be combined with evasion techniques (dynamic API resolution, ETW/AMSI patching) to actually work
 
 ---
 
@@ -411,12 +415,12 @@ Defender stays enabled with default settings for the entire curriculum. You neve
 | 02 | C# Basics | Variables, types, loops, functions, arrays, byte manipulation - taught through security examples |
 | 03 | Windows API | P/Invoke, DllImport, calling VirtualAlloc/CreateThread from C#, how .NET talks to the Windows kernel |
 | 04 | Memory Fundamentals | Process memory layout, virtual memory, VirtualAlloc, WriteProcessMemory, memory protection flags, thread creation |
-| 05 | Shellcode Loader | Generate shellcode with msfvenom, build Loader 01, understand why Defender catches it, learn what to fix |
-| 06 | Encoding Evasion | XOR encryption, build Loader 02, encrypt shellcode on the hard drive, decrypt at runtime, bypass static signatures |
-| 07 | Direct Syscalls | Windows API call chain, syscall numbers, build Loader 03, bypass Defender's ntdll.dll hooks |
-| 08 | AMSI Bypass | How AMSI scans .NET and PowerShell, build Loader 04, patch AmsiScanBuffer in RAM |
-| 09 | Reflective Injection | Process injection, build Loaders 05 and 06, inject into remote processes, Early Bird APC |
-| 10 | Combined Evasion | Build Loader 08 (ETW + AMSI + XOR + dynamic resolution + NT functions), all layers combined |
+| 05 | Shellcode Loader | Generate shellcode with msfvenom, build Loader 01, Defender catches it, understand exactly what was flagged |
+| 06 | Encoding Evasion | XOR encryption, build Loader 02, encrypted file survives disk scanning but loader still gets caught by other layers |
+| 07 | Direct Syscalls | Windows API call chain, syscall numbers, build Loader 03, bypass Defender's ntdll.dll hooks (first loader that survives) |
+| 08 | AMSI Bypass | How AMSI scans .NET and PowerShell, build Loader 04 + Loader 07, patch AmsiScanBuffer and EtwEventWrite |
+| 09 | Reflective Injection | Process injection techniques (Loaders 05 and 06), Defender catches these alone, learn the technique for combining later |
+| 10 | Combined Evasion | Build Loader 08 (all techniques combined), first fully stealthy callback with Defender at default settings |
 | 11 | Real World Scenarios | How these techniques work in actual red team engagements, what works against EDR, operational planning |
 
 **Do them in order.** Each document assumes you have completed the previous ones. Document 07 (Direct Syscalls) references RAM allocation from Document 04. Document 10 (Combined Evasion) combines everything from Documents 05 through 09. Skipping ahead means the code and explanations will not make sense.
