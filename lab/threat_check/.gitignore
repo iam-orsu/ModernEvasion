@@ -1,0 +1,6 @@
+# Cloned rule repos - too large, clone fresh with: git clone --depth=1 https://github.com/Neo23x0/signature-base.git
+rules/signature-base/
+rules/protections-artifacts/
+
+# Compiled binaries - rebuild with dotnet build
+compiled/
