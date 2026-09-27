@@ -294,7 +294,7 @@ In VMware:
 4. VM name: **Win11-DevBox**
 5. Choose a storage location with at least 60 GB free space
 6. Processors: 2 processors, 2 cores each (4 total cores)
-7. Memory: **8192 MB (8 GB)** if your host has 24+ GB RAM. You can use 4096 MB (4 GB) if RAM is tight, since this machine does not need to run Defender as heavily.
+7. Memory: **8192 MB (8 GB)** if your host has 24+ GB RAM. You can use 4096 MB (4 GB) if RAM is tight, since Defender will be disabled on this machine and Visual Studio does not need 8 GB.
 8. Network: **Use host-only networking** (the same host-only network, 192.168.10.0 subnet)
 9. Disk: 60 GB, store as single file
 10. Click Finish
@@ -378,11 +378,38 @@ ipconfig
 
 You should see IP 192.168.10.150 and subnet mask 255.255.255.0.
 
-### Step 7: Take a Snapshot
+### Step 7: Disable Windows Defender
+
+The dev box compiles malware. If Defender is active here, it quarantines your compiled .exe files before you can transfer them to the target. Defender testing only happens on the target machine (kimjongun, 192.168.10.100), never on the dev box. This is realistic because in a real red team engagement, your development machine does not run the same security controls as the client's machines.
+
+To disable Defender on the dev box:
+
+1. Open **Windows Security** (click the shield icon in the taskbar or search for "Windows Security")
+2. Click **Virus & threat protection**
+3. Under "Virus & threat protection settings", click **Manage settings**
+4. Turn OFF all of these:
+   - **Real-time protection** - OFF
+   - **Cloud-delivered protection** - OFF
+   - **Automatic sample submission** - OFF
+   - **Tamper protection** - OFF (turn this off first if the other toggles keep turning back on)
+
+Windows will show a warning that your device is vulnerable. That is expected. This machine is for compiling, not for testing.
+
+**Important:** Windows may turn Real-time protection back on after a restart. If that happens, disable it again. For a permanent solution, you can disable Defender through Group Policy:
+
+1. Press `Win + R`, type `gpedit.msc`, press Enter
+2. Navigate to: Computer Configuration > Administrative Templates > Windows Components > Microsoft Defender Antivirus
+3. Double-click "Turn off Microsoft Defender Antivirus"
+4. Select **Enabled**, click OK
+5. Restart the VM
+
+After restarting, verify Defender is off by opening Windows Security. It should show "Threat service has stopped. Restart it now." Do not restart it.
+
+### Step 8: Take a Snapshot
 
 1. VM > Snapshot > Take Snapshot
 2. Name: "Clean - Lab Ready"
-3. Description: "Windows 11 Pro, VS2022 installed, .NET SDK working, IP 192.168.10.150, username ammulu"
+3. Description: "Windows 11 Pro, VS2022 installed, .NET SDK working, Defender disabled, IP 192.168.10.150, username ammulu"
 4. Click Take Snapshot
 
 ## Setting Up the Kali Linux VM (Attacker Machine)
@@ -656,6 +683,7 @@ Your lab is fully set up when every item on this list is verified:
 **Dev Box (ammulu, 192.168.10.150):**
 - [ ] Windows 11 Pro installed
 - [ ] Static IP set to 192.168.10.150
+- [ ] Defender DISABLED (real-time protection OFF, or disabled via Group Policy)
 - [ ] Visual Studio 2022 Community installed with .NET desktop development workload
 - [ ] `dotnet --version` returns 6.0 or later
 - [ ] `dotnet new console` and `dotnet run` produces "Hello, World!"

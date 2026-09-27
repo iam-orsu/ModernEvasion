@@ -17,6 +17,7 @@ Attacker:          Kali Linux at 192.168.10.200 (username: kali)
 
 Dev Box:           Windows 11 Pro at 192.168.10.150 (username: ammulu)
                    Visual Studio 2022 Community, .NET 6+, compiles all loaders
+                   Defender DISABLED (compiled loaders would be quarantined)
                    This machine builds the malware. No Defender testing here.
 
 Target:            Windows 11 Pro at 192.168.10.100 (username: kimjongun)
@@ -244,7 +245,7 @@ Produce these in order. Do not begin the next document until the current one is 
 
 ```
 00_intro.md              - What you will learn, why this matters, prerequisites, lab setup
-01_lab_setup.md          - Build Windows 11 VM, Kali VM, install VS, install Kali tools, verify everything works
+01_lab_setup.md          - Build target VM, dev box VM, Kali VM, install VS on dev box, disable Defender on dev box, install Kali tools, verify everything works
 02_c_sharp_basics.md     - Variables, loops, functions, basic syntax (taught through security examples, not boring tutorials)
 03_windows_api.md        - DllImport, P/Invoke, how to call Windows functions from C#
 04_memory_fundamentals.md - What is process memory, VirtualAlloc, WriteProcessMemory, CreateThread basics
@@ -291,7 +292,7 @@ Before any document is considered complete:
 - [ ] Reverse engineering confirms no suspicious bytes
 - [ ] Code includes teaching comments explaining each section
 - [ ] All IPs/ports/names are parameterized
-- [ ] Loader has been tested in the actual Windows 11 VM
+- [ ] Loader has been tested on the actual target (kimjongun, 192.168.10.100) with Defender active
 
 ### For Teaching Documents:
 - [ ] Every new technical term is explained in beginner terms on first use
@@ -339,16 +340,16 @@ After each phase completes:
 ## Tools Required on Kali
 
 Install before starting:
-- Visual Studio 2022 Community (on Windows 11 VM for compilation)
+- Visual Studio 2022 Community (on dev box, ammulu, 192.168.10.150)
 - .NET 6 SDK or later
 - Threat detection tool (your choice: YARA, VirusTotal API, local scanner)
 - smbclient (for file transfer)
 - python3 (for http.server if needed for staging)
 - msfvenom (for generating shellcode payloads)
 
-## Defender Configuration (NOT to be changed)
+## Defender Configuration
 
-Windows 11 Defender throughout:
+### Target Machine (kimjongun, 192.168.10.100) - NOT to be changed
 - Real-time scanning: ON
 - Cloud-based protection: ON
 - Automatic updates: ON
@@ -356,6 +357,12 @@ Windows 11 Defender throughout:
 - Default security settings
 
 This is intentional. The curriculum teaches evasion against real production Defender, not a gimped version.
+
+### Dev Box (ammulu, 192.168.10.150) - Defender DISABLED
+- Real-time protection: OFF
+- All Defender scanning: OFF
+
+The dev box compiles malware. If Defender is active on the dev box, it quarantines your compiled .exe files before you can transfer them to the target. Defender testing only happens on the target machine. This is realistic because in a real engagement, your development machine does not have the same security controls as the client's machines.
 
 ## Special Notes for Beginner Teaching
 

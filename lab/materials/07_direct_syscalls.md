@@ -9,7 +9,7 @@ You finished Documents 05 and 06. You have built two loaders and Defender caught
 
 You understand that Defender has multiple detection layers, and XOR encryption only defeats one of them (static file scanning). The loader binary's import table and runtime behavior are still being caught.
 
-Your lab has three machines: dev box (ammulu, 192.168.10.150) for compiling, target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode and listeners.
+Your lab has three machines: dev box (ammulu, 192.168.10.150) for compiling (Defender disabled), target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode and listeners.
 
 ## Why This Is Next
 
@@ -540,7 +540,7 @@ Check your Metasploit listener on Kali. You should see:
 meterpreter >
 ```
 
-You have a Meterpreter session. Type `sysinfo` to confirm you are on the Windows 11 machine:
+You have a Meterpreter session. Type `sysinfo` to confirm you are on the target:
 
 ```
 meterpreter > sysinfo
@@ -554,11 +554,11 @@ This is your first successful callback with Defender fully enabled.
 
 Three things confirm that Loader 03 worked:
 
-1. **Meterpreter session opened.** Your Kali listener shows a session. You can run `sysinfo`, `getuid`, `pwd`, and other Meterpreter commands. The shellcode is running inside the loader process on the Windows 11 machine.
+1. **Meterpreter session opened.** Your Kali listener shows a session. You can run `sysinfo`, `getuid`, `pwd`, and other Meterpreter commands. The shellcode is running inside the loader process on the target.
 
 2. **No Defender alerts.** Open Windows Security on the target (kimjongun). Go to Virus & threat protection, then Protection history. There should be no new entries for syscall_loader.exe. Defender did not catch the loader.
 
-3. **The loader process is running.** Open Task Manager on Windows. Look for syscall_loader.exe (or whatever you named the binary). It shows as a normal process. Defender is not flagging it.
+3. **The loader process is running.** Open Task Manager on the target. Look for syscall_loader.exe (or whatever you named the binary). It shows as a normal process. Defender is not flagging it.
 
 If Defender does catch the loader (which can happen if Defender's cloud signatures have been updated since this was written), check the detection name and proceed to Documents 08 and 10 which add AMSI patching, ETW patching, and additional evasion layers.
 
@@ -571,7 +571,7 @@ You can now:
 - Call NT-level functions (NtAllocateVirtualMemory, NtProtectVirtualMemory, NtCreateThreadEx) directly via delegates
 - Use two-step memory allocation (RW then RX) instead of a single RWX allocation
 - Combine XOR encryption with dynamic resolution to defeat both disk scanning and import table analysis
-- **Get a callback on a Windows 11 machine with Defender fully enabled**
+- **Get a callback on the target with Defender fully enabled**
 
 You have bypassed three of Defender's six detection layers:
 

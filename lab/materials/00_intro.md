@@ -391,6 +391,7 @@ Lab Network: 192.168.10.0/24
       |      - Windows 11 Pro
       |      - Visual Studio 2022 Community installed
       |      - .NET 8 SDK (or latest)
+      |      - Defender DISABLED (so compiled loaders are not quarantined)
       |      - Username: ammulu
       |      - This is where you COMPILE loaders. No testing here.
       |
@@ -471,10 +472,10 @@ lab/
 
 **3. Understand every line.** Each loader is explained line by line so you understand the mechanism. Copy-pasting without understanding means you cannot adapt when Defender updates its signatures.
 
-**4. Test everything.** After building each loader, run it in the Windows 11 VM with Defender active. Verify it works. If it gets caught, understand why and fix it.
+**4. Test everything.** After building each loader, transfer it to the target (kimjongun, 192.168.10.100) and run it with Defender active. Verify it works. If it gets caught, understand why and fix it.
 
 **5. Signatures change.** Defender updates regularly. A technique that works today might get caught next month. The goal is understanding the mechanism so you can develop new bypasses when current ones stop working. That adaptability is the actual skill.
 
 ## What Comes Next
 
-Start with Document 01 (lab/materials/01_lab_setup.md). It walks you through building your Windows 11 and Kali VMs, installing Visual Studio and the .NET SDK, setting up the network, and verifying that everything works. No code until the lab is ready.
+Start with Document 01 (lab/materials/01_lab_setup.md). It walks you through building all three VMs (target, dev box, and Kali), installing Visual Studio on the dev box, disabling Defender on the dev box, setting up the network, and verifying that everything works. No code until the lab is ready.

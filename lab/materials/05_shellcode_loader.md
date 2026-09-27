@@ -10,7 +10,7 @@ You finished Documents 02 through 04. You can:
 - Use VirtualAlloc, Marshal.Copy, VirtualProtect, and CreateThread
 - Understand the two-step allocation (allocate as read-write, write data, change to execute-read)
 
-Your lab has three machines: dev box (ammulu, 192.168.10.150) for compiling, target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode and listeners.
+Your lab has three machines: dev box (ammulu, 192.168.10.150) for compiling (Defender disabled), target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode and listeners.
 
 ## Why This Is Next
 
@@ -532,7 +532,7 @@ If payload.bin somehow survives, Defender's behavioral engine watches the loader
 
 **What you do when Defender blocks it:**
 
-1. Open **Windows Security** on your VM (search for it in Start menu)
+1. Open **Windows Security** on the target (search for it in Start menu)
 2. Click **Protection History**
 3. Read the detection entry. It tells you:
    - The threat name (something like `Trojan:Win64/Meterpreter` or `Behavior:Win32/ShellcodeRunner`)

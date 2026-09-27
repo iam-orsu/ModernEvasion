@@ -2,7 +2,7 @@
 
 ## Where We Are
 
-You finished Document 05. You built Loader 01 (the basic shellcode loader), ran it on your Windows 11 machine, and Defender caught it. You saw the detection in Windows Security Protection History. You know exactly what Defender flagged:
+You finished Document 05. You built Loader 01 (the basic shellcode loader), ran it on the target (kimjongun, 192.168.10.100), and Defender caught it. You saw the detection in Windows Security Protection History. You know exactly what Defender flagged:
 
 - The raw shellcode .bin file matched known msfvenom byte signatures on disk
 - The VirtualAlloc + CreateThread API pattern is a known injection sequence
@@ -10,11 +10,11 @@ You finished Document 05. You built Loader 01 (the basic shellcode loader), ran 
 
 You can write C# programs, call Windows API functions with DllImport, allocate memory, copy bytes, create threads, and read the results in Protection History.
 
-Your lab has three machines: dev box (ammulu, 192.168.10.150) for compiling, target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode and listeners.
+Your lab has three machines: dev box (ammulu, 192.168.10.150) for compiling (Defender disabled), target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode and listeners.
 
 ## Why This Is Next
 
-In Document 05, Defender caught your shellcode before it could execute. One of the first things Defender does is scan files on disk. When you transferred the raw shellcode .bin file to your Windows machine, Defender scanned it and matched the bytes against its signature database. The match was instant because msfvenom shellcode contains well-known byte patterns that every antivirus product recognizes.
+In Document 05, Defender caught your shellcode before it could execute. One of the first things Defender does is scan files on disk. When you transferred the raw shellcode .bin file to the target, Defender scanned it and matched the bytes against its signature database. The match was instant because msfvenom shellcode contains well-known byte patterns that every antivirus product recognizes.
 
 This document solves one of those problems. You will XOR-encrypt the shellcode so the .bin file on disk looks like random data. Defender's static signature scanner cannot match bytes that have been scrambled.
 

@@ -4,7 +4,7 @@
 
 You finished Document 02 and can write C# programs that store data in variables, make decisions with if/else, loop through arrays, create byte arrays, write functions, XOR-encrypt data, read files, parse command-line arguments, use Marshal.Copy, and build strings from integer offsets.
 
-Your lab has three machines on 192.168.10.0/24: the dev box (ammulu, 192.168.10.150) where you compile code, the target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode generation and listeners. All coding in this document happens on the dev box.
+Your lab has three machines on 192.168.10.0/24: the dev box (ammulu, 192.168.10.150) where you compile code (Defender disabled), the target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode generation and listeners. All coding in this document happens on the dev box.
 
 ## Why This Is Next
 
@@ -28,7 +28,7 @@ Open Task Manager on your dev box (press Ctrl+Shift+Esc), click the Performance 
 
 ### What Windows Does When You Use Your Computer
 
-Right now on your dev box, dozens of things are happening. Explorer is showing your desktop, Defender is scanning in the background, the taskbar clock is updating every minute, your mouse cursor is moving around. None of these programs handle all of this by themselves. They all ask Windows to do the work.
+Right now on your dev box, dozens of things are happening. Explorer is showing your desktop, Visual Studio is running in the background, the taskbar clock is updating every minute, your mouse cursor is moving around. None of these programs handle all of this by themselves. They all ask Windows to do the work.
 
 When you double-click a .exe file on your desktop, Windows copies that program from the hard drive into RAM, creates a new process for it, and starts running it. When the program wants to show a window on screen, it asks Windows to create the window. Windows draws the title bar, the close button, the minimize button, and the window border.
 
@@ -279,7 +279,7 @@ Run it. You hear three tones. The pattern is always the same: write `[DllImport(
 
 MessageBox and Beep tell Windows to do something. Windows API functions can also give you information about the system.
 
-Right now on your dev box, there are dozens of programs running at the same time. Chrome, Explorer, Defender, background services, all running together. Windows needs to know which program is which. So every time a program starts, Windows gives it a unique number. This number is called a process ID, written as PID for short. Chrome might get 4528, Notepad might get 7812, Explorer might get 1340. No two running programs ever get the same PID.
+Right now on your dev box, there are dozens of programs running at the same time. Chrome, Explorer, Visual Studio, background services, all running together. Windows needs to know which program is which. So every time a program starts, Windows gives it a unique number. This number is called a process ID, written as PID for short. Chrome might get 4528, Notepad might get 7812, Explorer might get 1340. No two running programs ever get the same PID.
 
 You can see this right now. Press Ctrl+Shift+Esc on your dev box to open Task Manager. If it opens in the small view, click "More details" at the bottom. Now right-click on the column headers at the top and turn on the PID column. Every program on that list has a number next to it, and that number is the PID that Windows assigned when the program started.
 

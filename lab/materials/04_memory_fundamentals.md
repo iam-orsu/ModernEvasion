@@ -8,7 +8,7 @@ You finished Documents 02 and 03. You can:
 - Call Windows API functions from C# using DllImport and P/Invoke
 - Use VirtualAlloc, Marshal.Copy, VirtualProtect, and CreateThread
 
-Your lab has three machines: dev box (ammulu, 192.168.10.150) for compiling, target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode and listeners. All coding in this document happens on the dev box.
+Your lab has three machines: dev box (ammulu, 192.168.10.150) for compiling (Defender disabled), target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode and listeners. All coding in this document happens on the dev box.
 
 ## Why This Is Next
 
@@ -30,7 +30,7 @@ Your computer has a rectangular chip on its motherboard called RAM (Random Acces
 
 Two problems come up immediately:
 
-**Problem 1: Limited RAM.** Your Windows 11 VM has 8 GB of RAM. Right now, dozens of programs are running: Explorer, Defender, the taskbar, background services, maybe Chrome or Notepad. Each needs RAM. But 8 GB is a fixed amount. What happens when they all need more than 8 GB combined?
+**Problem 1: Limited RAM.** Your dev box has 8 GB of RAM. Right now, dozens of programs are running: Explorer, the taskbar, background services, Visual Studio, maybe Chrome or Notepad. Each needs RAM. But 8 GB is a fixed amount. What happens when they all need more than 8 GB combined?
 
 **Problem 2: Isolation.** When Chrome gets a chunk of RAM and Notepad gets a different chunk, what stops Chrome from accidentally reading or writing into Notepad's chunk? If your shellcode loader runs, could it read passwords that another program stored in its RAM?
 
@@ -38,7 +38,7 @@ Windows solves both problems with a system called **virtual memory**.
 
 ### Virtual Memory: Every Program Gets Its Own Private Address Space
 
-Open Task Manager on your dev box (Ctrl+Shift+Esc). Click the Details tab. Look at the "Memory (private working set)" column. Add up the numbers for all running processes. The total is often more than the physical RAM your VM has. How?
+Open Task Manager on your dev box (Ctrl+Shift+Esc). Click the Details tab. Look at the "Memory (private working set)" column. Add up the numbers for all running processes. The total is often more than the physical RAM your dev box has. How?
 
 Windows does not give programs direct access to the physical RAM chip. Instead, Windows creates a private address space for each program. This is called virtual memory.
 
@@ -72,7 +72,7 @@ When you use VirtualAllocEx to allocate RAM inside explorer.exe, Windows creates
 
 Windows does not manage RAM byte by byte. That would be too slow. Instead, Windows divides RAM into fixed-size blocks called **pages**.
 
-On x86-64 systems (your Windows 11 VM), each page is **4,096 bytes (4 KB)**.
+On x86-64 systems (your dev box and target are both x86-64), each page is **4,096 bytes (4 KB)**.
 
 Everything Windows does with RAM works in pages:
 
