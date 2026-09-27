@@ -80,9 +80,17 @@ foreach ($L in $Loaders) {
     # Copy the source file as Program.cs
     Copy-Item -Path $SrcPath -Destination "$ProjDir\Program.cs" -Force
 
-    # Compile
-    Write-Host "  [*] Compiling..." -ForegroundColor Cyan
-    $CompileResult = & dotnet build "$ProjDir\loader.csproj" -c Release -o "$ProjDir\out" --nologo 2>&1
+    # Compile as single-file publish so loader03.exe etc. are real standalone binaries.
+    # dotnet build produces loader.exe + loader.dll separately - the exe is just a stub
+    # that looks for the dll next to it. dotnet publish with PublishSingleFile=true
+    # bundles the dll into the exe so you get one file you can copy anywhere.
+    # --self-contained false means the target still needs .NET 8 runtime installed,
+    # but the binary is smaller and does not carry an entire runtime inside it.
+    Write-Host "  [*] Compiling (single-file publish)..." -ForegroundColor Cyan
+    $CompileResult = & dotnet publish "$ProjDir\loader.csproj" -c Release -r win-x64 `
+        --self-contained false `
+        /p:PublishSingleFile=true `
+        -o "$ProjDir\out" --nologo 2>&1
     $CompileOk = ($LASTEXITCODE -eq 0)
 
     if (-not $CompileOk) {
@@ -92,7 +100,7 @@ foreach ($L in $Loaders) {
         continue
     }
 
-    # Find the compiled exe
+    # Find the compiled exe (publish puts a single loader.exe in out/)
     $CompiledExe = Get-ChildItem -Path "$ProjDir\out" -Filter "*.exe" | Select-Object -First 1
     if (-not $CompiledExe) {
         Write-Host "  [-] No .exe found in output" -ForegroundColor Red
@@ -100,7 +108,7 @@ foreach ($L in $Loaders) {
         continue
     }
 
-    # Copy to output dir with clean name
+    # Copy to output dir with clean name - single file, no dll companion needed
     Copy-Item -Path $CompiledExe.FullName -Destination $ExePath -Force
     Write-Host "  [+] Compiled: $ExePath" -ForegroundColor Green
 
