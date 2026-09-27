@@ -2,212 +2,375 @@
 
 ## Where We Are
 
-You have read Document 00 and you understand what this curriculum covers. You know you will be building C# programs that evade Windows Defender. You know the lab has two virtual machines on an isolated network. You have not installed anything yet.
+You have read Document 00 and you understand the full picture: why C# is the right language for Windows evasion, how Defender's 6 detection layers work, what each of the 8 loaders does, and how this curriculum connects to real red team jobs. You have not installed or set up anything yet.
 
-At this point you need:
-- A host computer with at least 16 GB RAM and 100 GB free disk space
-- A processor that supports hardware virtualization
-- An internet connection to download the required software
+At this point you know:
+- C# gives you native access to the Windows API through P/Invoke
+- Defender uses static scanning, cloud analysis, AMSI, API hooks, ETW telemetry, and behavioral analysis
+- You will build 8 loaders, each targeting a specific detection layer
+- You need two virtual machines: a Windows 11 target and a Kali Linux attacker
+
+You need a host machine with at least 16 GB RAM, 100 GB free disk, and a CPU with virtualization support (Intel VT-x or AMD-V).
 
 ## Why This Is Next
 
-Before you write any code, you need a working lab. Every loader in this curriculum will be compiled on a Windows 11 VM and tested against a real Windows Defender installation. The shellcode payloads will be generated on a Kali Linux VM. The two VMs talk to each other over an isolated virtual network.
+Every loader in this curriculum compiles on a Windows 11 VM and runs against a real Defender installation. The shellcode payloads come from msfvenom on a Kali VM. The two machines communicate over an isolated network where you can test without affecting your real network or the internet.
 
-If your lab is not set up correctly, nothing else in this curriculum will work. A wrong network setting means your shellcode cannot call back to Kali. A missing tool means you cannot compile or test your loaders. This document gets everything working before you touch any C# code.
+If the lab is wrong, nothing else works. A wrong network configuration means your shellcode's reverse connection cannot reach Kali, so you will think your loader failed when actually the network is broken. A missing .NET SDK means you cannot compile. An outdated Defender means you are testing against signatures from months ago, and your loaders will work in the lab but fail on a real target. This document gets the infrastructure right so every subsequent document works the first time.
+
+The lab also teaches you something that matters on real engagements: the attacker-target relationship. On a red team engagement, you have your attacker machine (where you prepare payloads, run listeners, and receive connections) and the target machine (the client's system you are testing). The lab mirrors this exactly. Learning to work across two machines, transfer files, and manage connections is an operational skill you will use on every engagement.
 
 ## How This Works
 
-A virtual machine (VM) is a simulated computer that runs inside your real computer. Your real computer is called the host, and the simulated computer is called the guest. VMware Workstation Pro is the software that creates and manages these virtual machines.
+### What a Virtual Machine Is
 
-You will create two VMs:
-- A Windows 11 Pro VM that acts as the target machine (this is the machine you are attacking)
-- A Kali Linux VM that acts as the attacker machine (this is where you generate payloads and receive connections)
+A virtual machine is a software simulation of a complete computer. Your real computer (the host) runs software called a hypervisor that creates one or more virtual computers (guests) inside it. Each guest has its own operating system, its own hard drive (stored as a file on the host), its own network adapter (simulated by the hypervisor), and its own memory allocation. The guest operating system does not know it is virtual. It behaves exactly like a real computer.
 
-Both VMs will be on the same virtual network (192.168.10.0/24) so they can communicate with each other. This network is isolated from the internet and from your host machine's real network, so nothing you do in the lab leaks out.
+VMware Workstation Pro is the hypervisor you will use. It creates a layer between the host hardware and the guest operating systems, giving each guest its own isolated environment. The reason we use VMs instead of real machines is control: you can snapshot a VM at any point and restore it to that exact state later. If a loader does something unexpected, you restore the snapshot and try again. On a physical machine, you would need to reinstall the OS.
+
+### What a Host-Only Network Is
+
+VMware lets you create virtual networks that exist only inside the hypervisor. A host-only network connects VMs to each other but does not connect them to the internet or to your host machine's real network. This isolation is critical:
+
+- Your shellcode payloads make network connections (reverse shells call back to the attacker machine). On a host-only network, those connections stay inside the hypervisor. If you accidentally used a bridged network (which connects to your real network), your shellcode could try to connect to real machines on your network.
+- Defender's cloud protection sends file hashes to Microsoft for analysis. On a host-only network with no internet, cloud protection cannot phone home. This is a realistic scenario because many enterprise networks restrict outbound connections. However, for the most accurate testing, you can optionally give the Windows VM internet access through a NAT adapter for Defender updates only, then switch back to host-only for testing.
+- Nothing you do in the lab affects anything outside the lab. This is a safety boundary that protects your real environment.
+
+Both VMs will be on the network 192.168.10.0/24, which means all IP addresses start with 192.168.10 and the subnet mask is 255.255.255.0 (the /24 means the first 24 bits of the address are the network portion). The Windows VM gets 192.168.10.100 and Kali gets 192.168.10.200.
+
+### What Defender's Default Configuration Looks Like
+
+When you install Windows 11 and do not change any security settings, Defender runs with these protections:
+
+- **Real-time protection:** Every file write, file creation, and file modification triggers an immediate scan. When your loader .exe lands on disk, Defender scans it before you can run it.
+- **Cloud-delivered protection:** When Defender encounters an unknown file, it sends a hash to Microsoft's cloud for analysis. The cloud has machine learning models and a larger signature database. If the cloud returns a verdict of "malicious", Defender blocks the file.
+- **Automatic sample submission:** Defender can send the actual file (not just the hash) to Microsoft for deep analysis. This is enabled by default.
+- **Tamper protection:** Prevents programs from modifying Defender's settings, disabling its services, or patching its DLLs. This is why our AMSI bypass patches amsi.dll (which is loaded into our own process) rather than trying to modify Defender itself.
+- **Controlled folder access:** Protects common folders (Documents, Desktop, etc.) from unauthorized modifications by unknown programs.
+- **Exploit protection:** Enforces security mitigations like DEP (Data Execution Prevention), ASLR (Address Space Layout Randomization), and CFG (Control Flow Guard) on processes.
+
+All of these stay at their default settings throughout the curriculum. You will not change, disable, or weaken any of them. This matters because when you test a loader and it works, you know it works against real production security. If you disabled cloud protection or real-time scanning, your results would not reflect reality.
 
 ## What Defender Does
 
-Windows Defender is the antivirus built into Windows 11. It does these things:
-- **Real-time file scanning:** Every time a file is created, downloaded, or modified, Defender scans it
-- **Cloud-based analysis:** When Defender sees something suspicious, it sends a hash (a fingerprint of the file) to Microsoft's cloud servers for additional analysis
-- **Memory scanning:** Defender periodically scans process memory for known malicious patterns
-- **Behavior monitoring:** Defender watches what programs do at runtime (which APIs they call, what memory they allocate)
-- **AMSI integration:** Defender scans scripts (PowerShell, VBScript, JavaScript) before they run
-- **ETW telemetry consumption:** Defender receives telemetry events from running processes
+During lab setup specifically, Defender does two things that affect you:
 
-Throughout this curriculum, Defender stays fully enabled with all of these protections active. You will learn to write code that bypasses each of these layers.
+1. **It scans downloaded files.** When you download Visual Studio, .NET SDK, or any other installer, Defender scans the downloaded file. This is normal and will not interfere with your setup.
+
+2. **It may interfere with compiled loaders.** When you compile a loader later in the curriculum, Defender may quarantine the resulting .exe or .dll if it detects it as malicious. This is expected behavior. Defender detecting your loader is not a problem - it is information that tells you your loader needs more evasion work. During lab setup, this is not relevant because you are not compiling any loaders yet.
 
 ## The Evasion Technique
 
-There is no evasion technique in this document. This is about building the lab infrastructure. The evasion starts in Document 05 when you build your first shellcode loader.
+There is no evasion technique in this document. Lab setup is infrastructure work. Evasion begins in Document 05 when you build your first shellcode loader. However, the lab setup decisions you make here directly affect how your loaders will behave:
+
+- The host-only network means your reverse shell payloads will connect to 192.168.10.200 (Kali). If the network is misconfigured, the shells will not connect.
+- The Defender configuration determines what your loaders need to bypass. If you weakened Defender, your loaders would work in the lab but fail in the real world.
+- The .NET SDK version determines which C# features are available. We target .NET 6 or later because it supports the unsafe code blocks and Marshal operations our loaders need.
 
 ## Getting the Loader Onto the Target
 
-This section does not apply to Document 01. There is no loader yet.
+No loader exists yet. This section applies starting from Document 05. For now, you need to set up file transfer between Kali and Windows so it is ready when you need it.
+
+The two file transfer methods you will use throughout this curriculum are:
+
+1. **Python HTTP server on Kali:** You run `python3 -m http.server 8080` on Kali, which starts a web server that serves files from the current directory. On Windows, you download files using a browser or PowerShell's `Invoke-WebRequest`. This is how most red team engagements deliver initial payloads - through HTTP/HTTPS downloads.
+
+2. **SMB file sharing:** Windows natively supports SMB (Server Message Block) file shares. You create a shared folder on Windows, and Kali accesses it using `smbclient`. This is bidirectional - you can upload files from Kali to Windows and download files from Windows to Kali. SMB is useful when you need to quickly move files back and forth during testing.
+
+Both methods are set up and tested in this document so they are ready when loaders start getting compiled.
+
+## Teaching the Code
+
+There is no code to teach in this document. This is infrastructure setup. The first code appears in Document 02 (C# Basics).
+
+However, you will run one verification command at the end to confirm the .NET SDK is working:
+
+```csharp
+// This is a minimal C# program that prints a message.
+// You will run this on the Windows VM to verify the build toolchain works.
+using System;
+
+class Program
+{
+    static void Main()
+    {
+        Console.WriteLine("Build toolchain is working.");
+    }
+}
+```
+
+This program does nothing interesting. It exists only to verify that the `dotnet` command can compile and run C# code on your Windows VM.
 
 ## Setting Up VMware Workstation Pro
 
-### Step 1: Download VMware
+### Step 1: Download and Install VMware
 
-VMware Workstation Pro is free for personal use. Download it from the official VMware website. Install it on your host machine with default settings.
+VMware Workstation Pro became free for personal use in 2024. Download it from the official VMware website (now part of Broadcom). Run the installer on your host machine and accept the default settings.
 
-After installation, open VMware Workstation Pro. You should see the main window with options to create new virtual machines.
+After installation, open VMware Workstation Pro. You will see the home screen with options to create virtual machines.
 
-### Step 2: Verify Virtualization Is Enabled
+### Step 2: Verify Hardware Virtualization
 
-Your host machine's processor needs to have hardware virtualization enabled in the BIOS/UEFI settings. This is usually called "Intel VT-x" or "AMD-V" depending on your processor.
+VMware requires hardware virtualization (Intel VT-x or AMD-V) enabled in your host machine's BIOS/UEFI. Without it, VMs will be extremely slow or will not start at all.
 
-To check if virtualization is enabled:
-1. Open Task Manager on your host (Ctrl + Shift + Esc)
+To check if virtualization is enabled on your host:
+1. Open Task Manager (Ctrl + Shift + Esc)
 2. Click the Performance tab
 3. Click CPU
-4. Look for "Virtualization: Enabled" in the bottom right
+4. In the bottom-right section, look for "Virtualization: Enabled"
 
-If it says "Disabled", you need to restart your computer, enter the BIOS/UEFI settings (usually by pressing F2, Del, or F12 during boot), find the virtualization setting, and enable it.
+If it says "Disabled":
+1. Restart your computer
+2. Enter BIOS/UEFI settings (the key varies by manufacturer: F2, Del, F10, F12, or Esc during boot - your motherboard manual or a quick search for your model will tell you which key)
+3. Find the virtualization setting (it is usually under CPU Configuration, Advanced, or Security)
+4. Enable it (the setting name varies: "Intel Virtualization Technology", "Intel VT-x", "AMD-V", "SVM Mode")
+5. Save and exit BIOS
 
-## Setting Up the Windows 11 VM
+### Step 3: Create the Host-Only Network
 
-### Step 1: Download Windows 11 Pro ISO
+Before creating VMs, set up the isolated network:
+1. In VMware, go to Edit > Virtual Network Editor
+2. Click "Change Settings" (requires admin permissions)
+3. You should see a host-only network (usually VMnet1). If not, click "Add Network" and select a network, then set its type to "Host-only"
+4. Configure the network:
+   - Subnet IP: 192.168.10.0
+   - Subnet mask: 255.255.255.0
+   - Uncheck "Connect a host virtual adapter to this network" (this prevents your host from being on the lab network)
+   - Uncheck "Use local DHCP service to distribute IP addresses" (you will assign static IPs)
+5. Click Apply and OK
 
-Go to Microsoft's website and download the Windows 11 ISO file. Choose the 64-bit version. The ISO file is about 5 GB.
+This creates an isolated virtual switch that only your VMs can access. No traffic reaches the internet or your real network.
 
-### Step 2: Create the VM
+## Setting Up the Windows 11 VM (Target Machine)
 
-In VMware Workstation Pro:
+### Step 1: Download the Windows 11 ISO
+
+Go to Microsoft's website and download the Windows 11 ISO. Select Windows 11 (multi-edition), choose your language, and download the 64-bit version. The file is approximately 5-6 GB.
+
+### Step 2: Create the Virtual Machine
+
+In VMware:
 1. Click "Create a New Virtual Machine"
-2. Select "Custom (advanced)" and click Next
-3. For hardware compatibility, select the latest version and click Next
-4. Select "Installer disc image file (iso)" and browse to the Windows 11 ISO
-5. Click Next through the Microsoft Easy Install screen
-6. Set the VM name to "Win11-Target" and choose a location to store it
-7. Set the number of processors to 2 and cores per processor to 2
-8. Set RAM to 4096 MB (4 GB) minimum, 8192 MB (8 GB) if you have enough host RAM
-9. For network, select "Use host-only networking" (this creates the isolated network)
-10. Accept default disk settings but set the disk size to 60 GB
-11. Click Finish
+2. Select "Custom (advanced)" - do not use "Typical" because you need to control the hardware settings
+3. Hardware compatibility: select the latest available version
+4. Select "Installer disc image file (iso)" and browse to the Windows 11 ISO you downloaded
+5. If VMware asks about Easy Install or product key, skip those screens
+6. VM name: **Win11-Target**
+7. Choose a storage location with at least 60 GB free space
+8. Processors: 2 processors, 2 cores each (4 total cores). Windows 11 needs at least 2 cores. If your host has 8+ cores, you can give the VM more.
+9. Memory: **8192 MB (8 GB)** if your host has 16+ GB RAM. Minimum is 4096 MB (4 GB), but 8 GB gives smoother performance. Windows 11 is memory-hungry because of Defender's real-time scanning and cloud analysis running in the background.
+10. Network: Select "Use host-only networking" and make sure it points to the host-only network you created (VMnet1 or whichever network has the 192.168.10.0 subnet)
+11. SCSI controller: LSI Logic SAS (default)
+12. Disk type: NVMe (faster) or SCSI (default)
+13. Create a new virtual disk, 60 GB, store as single file
+14. Click Finish
+
+Before powering on, edit the VM settings:
+1. Go to VM > Settings
+2. Under Options > Advanced, make sure "Firmware type" is set to UEFI (Windows 11 requires UEFI, not BIOS)
+3. Under Hardware > Add, add a "Trusted Platform Module" (TPM) if VMware prompts you. Windows 11 requires TPM 2.0. VMware can emulate this.
 
 ### Step 3: Install Windows 11
 
-Power on the VM and follow the Windows 11 installation:
-1. Select your language and region
-2. Click "Install now"
-3. When asked for a product key, click "I don't have a product key"
-4. Select "Windows 11 Pro"
-5. Accept the license terms
-6. Choose "Custom: Install Windows only"
-7. Select the 60 GB drive and click Next
-8. Wait for installation to complete (15-30 minutes)
+Power on the VM. The Windows 11 installer starts:
 
-During the out-of-box setup:
-1. When asked to connect to the internet, choose "I don't have internet" (this lets you create a local account)
-2. Choose "Continue with limited setup"
-3. Set the username to: **kimjongun**
-4. Set a password you will remember
-5. Skip all the optional Microsoft services
+1. Select your language, time format, and keyboard layout. Click Next.
+2. Click "Install now"
+3. "Activate Windows" screen: click "I don't have a product key". Windows 11 works without a key for testing purposes. It will show a watermark but all features work.
+4. Select **Windows 11 Pro**. Not Home. Pro has features (like Remote Desktop and Group Policy Editor) that matter for security testing.
+5. Accept the license terms
+6. Choose "Custom: Install Windows only (advanced)"
+7. Select the 60 GB unallocated drive and click Next
+8. Wait 15-30 minutes for installation
+
+During the out-of-box experience (OOBE):
+1. Select your country/region
+2. Select your keyboard layout
+3. When asked to connect to a network: **choose "I don't have internet"** and then "Continue with limited setup". This is critical because it lets you create a local account instead of a Microsoft account. A local account is simpler for lab purposes.
+4. Enter the name: **kimjongun**
+5. Set a password you will remember (you will need it for SMB transfers and logins)
+6. Set the security questions (required by Windows)
+7. On the privacy settings screens, turn everything off (location, diagnostics, inking, advertising). These are not relevant for the lab and reducing them lowers background network noise.
 
 ### Step 4: Install VMware Tools
 
-After Windows 11 is installed and you are logged in:
-1. In VMware, go to VM > Install VMware Tools
-2. Open File Explorer in the Windows VM
-3. Navigate to the DVD drive (usually D:)
-4. Run the VMware Tools installer
-5. Accept defaults and restart
+VMware Tools improves the VM experience: better display resolution, shared clipboard, drag-and-drop file support, and better performance.
 
-VMware Tools gives you better display resolution, clipboard sharing between host and guest, and drag-and-drop file support. It makes the VM much easier to use.
+1. In VMware's menu bar, click VM > Install VMware Tools
+2. This mounts a virtual DVD in the Windows VM
+3. Open File Explorer, navigate to the DVD drive (usually D:)
+4. Run setup64.exe
+5. Follow the installer with default settings
+6. Restart the VM when prompted
 
-### Step 5: Update Windows
+After restart, you should be able to resize the VM window and the display resolution adjusts automatically. The mouse should also move smoothly between host and guest without pressing Ctrl+Alt.
 
-Open Settings > Windows Update and install all available updates. Restart when prompted. Repeat until no more updates are available. This is critical because we want the latest Defender definitions and the latest Windows security features active.
+### Step 5: Update Windows Fully
 
-### Step 6: Verify Defender Is Active
+This step is important. You want the latest Defender definitions and the latest Windows security features.
 
-Open Windows Security (click the shield icon in the system tray or search for "Windows Security"):
-1. Virus & threat protection: Should show "Real-time protection is on"
-2. Cloud-delivered protection: Should be on
-3. Automatic sample submission: Should be on
-4. Click "Check for updates" under "Virus & threat protection updates" and install any available
+1. Open Settings > Windows Update
+2. Click "Check for updates"
+3. Install all available updates
+4. Restart when prompted
+5. Check for updates again after restarting
+6. Repeat until "You're up to date" shows with no pending updates
 
-Confirm that all settings match the default configuration. Do not change anything.
+This process may take 30-60 minutes depending on how many updates are available. Some updates require multiple restarts. Be patient and keep checking until Windows says it is fully current.
 
-### Step 7: Install Visual Studio 2022
+### Step 6: Verify Defender Configuration
+
+Open Windows Security (click the shield icon in the system tray, or search for "Windows Security" in the Start menu):
+
+**Virus & threat protection:**
+- Real-time protection: ON
+- Cloud-delivered protection: ON
+- Automatic sample submission: ON
+- Tamper protection: ON
+
+Click "Virus & threat protection updates" and then "Check for updates" to get the latest Defender definitions.
+
+**Firewall & network protection:**
+- Firewall should be ON for all profiles. Do NOT disable it. Later, you may need to allow specific ICMP or port rules, but the firewall stays active.
+
+**App & browser control:**
+- Smart App Control: this may be set to "Evaluation" on a fresh install. Leave it as-is.
+- SmartScreen: ON
+
+**Device security:**
+- Core isolation > Memory integrity: this may or may not be on depending on your CPU. Leave it at its default.
+
+**Do not change any of these settings.** The entire point is testing against production Defender. Take a note of all the settings so you can verify they have not changed during testing.
+
+### Step 7: Install Visual Studio 2022 Community
+
+Visual Studio 2022 Community is free and includes the C# compiler, .NET SDK, and a full IDE for writing and debugging code.
 
 1. Open Edge browser in the Windows VM
-2. Go to visualstudio.microsoft.com
-3. Download Visual Studio 2022 Community (free)
-4. Run the installer
-5. When the workload selection screen appears, check these workloads:
-   - **.NET desktop development** (this installs C# and the .NET SDK)
-6. Click Install (this takes 10-30 minutes depending on your connection)
+2. For this step only, you need internet access. Temporarily add a NAT network adapter in VMware (VM > Settings > Add > Network Adapter > NAT) alongside the host-only adapter. This gives the VM internet access for downloads.
+3. Go to visualstudio.microsoft.com
+4. Download Visual Studio 2022 Community
+5. Run the installer (it downloads a bootstrapper that then downloads the components you select)
+6. On the Workloads screen, check:
+   - **.NET desktop development** (this is the only workload you need. It installs the C# compiler, .NET SDK, and the development tools for building console applications)
+7. Click Install. This downloads and installs approximately 5-8 GB of components. Wait for it to complete.
+8. After installation, launch Visual Studio once to complete the initial setup (sign in or skip, choose a theme, etc.)
+9. Close Visual Studio after the initial setup
 
-After installation, open Visual Studio to confirm it works. You can close it after the initial setup completes.
+After Visual Studio is installed, remove the NAT network adapter:
+1. Go to VM > Settings
+2. Select the NAT network adapter you added
+3. Click Remove
+4. Click OK
 
-### Step 8: Verify .NET SDK
+The VM is now back to host-only networking with no internet access.
 
-Open a command prompt (cmd) or PowerShell in the Windows VM and run:
+### Step 8: Verify the .NET SDK
+
+Open a Command Prompt (cmd) or PowerShell window and run:
 
 ```
 dotnet --version
 ```
 
-You should see a version number like 8.0.x or later. If dotnet is not recognized, the .NET SDK did not install correctly. Reinstall Visual Studio with the .NET desktop development workload.
+You should see version 8.0.x or later. If `dotnet` is not recognized as a command, the .NET SDK did not install correctly. Go back to Visual Studio Installer and verify that the .NET desktop development workload is installed.
 
-### Step 9: Set a Static IP
+Also verify that the C# compiler is available:
 
-Open Settings > Network & Internet > Ethernet:
-1. Click the network adapter
-2. Click Edit next to IP assignment
-3. Change from Automatic (DHCP) to Manual
-4. Enable IPv4
-5. Set these values:
+```
+dotnet --list-sdks
+```
+
+This should show at least one SDK version installed.
+
+### Step 9: Set a Static IP Address
+
+The Windows VM needs a fixed IP address so Kali always knows where to find it.
+
+1. Open Settings > Network & Internet > Ethernet
+2. Click the network adapter (it should be the VMware host-only adapter)
+3. Click Edit next to "IP assignment"
+4. Change from "Automatic (DHCP)" to "Manual"
+5. Toggle on IPv4
+6. Enter:
    - IP address: **192.168.10.100**
-   - Subnet mask: **255.255.255.0**
-   - Gateway: leave blank (the lab has no gateway)
-   - DNS: leave blank
-6. Click Save
+   - Subnet prefix length: **24** (this is the same as subnet mask 255.255.255.0)
+   - Gateway: leave blank
+   - Preferred DNS: leave blank
+7. Click Save
 
-## Setting Up the Kali Linux VM
+To verify, open Command Prompt and run:
+
+```
+ipconfig
+```
+
+You should see the Ethernet adapter with IP 192.168.10.100 and subnet mask 255.255.255.0.
+
+### Step 10: Take a Snapshot
+
+This is critical. Before doing anything else, take a snapshot of the VM in its current clean state:
+
+1. In VMware, go to VM > Snapshot > Take Snapshot
+2. Name it: "Clean - Lab Ready"
+3. Add a description: "Windows 11 Pro, fully updated, Defender active, VS2022 installed, .NET SDK working, IP 192.168.10.100"
+4. Click Take Snapshot
+
+If anything goes wrong later (a loader corrupts the system, you accidentally change a Defender setting, etc.), you can restore this snapshot and be back to a known-good state in seconds.
+
+## Setting Up the Kali Linux VM (Attacker Machine)
 
 ### Step 1: Download Kali Linux
 
-Go to kali.org/get-kali and download the latest Kali Linux ISO (64-bit). The file is about 3-4 GB.
+Go to kali.org/get-kali and download the latest Kali Linux installer ISO (64-bit). The file is approximately 3-4 GB.
 
-### Step 2: Create the VM
+### Step 2: Create the Virtual Machine
 
-In VMware Workstation Pro:
+In VMware:
 1. Click "Create a New Virtual Machine"
 2. Select "Custom (advanced)"
 3. Select "Installer disc image file (iso)" and browse to the Kali ISO
-4. Set the VM name to "Kali-Attacker"
-5. Set processors to 2 and cores to 2
-6. Set RAM to 4096 MB (4 GB)
-7. For network, select "Use host-only networking" (same network as the Windows VM)
-8. Set disk size to 40 GB
+4. VM name: **Kali-Attacker**
+5. Processors: 2 processors, 1-2 cores each
+6. Memory: **4096 MB (4 GB)**. Kali is lighter than Windows and 4 GB is enough.
+7. Network: **Use host-only networking** (the same host-only network as the Windows VM)
+8. Disk: 40 GB, store as single file
 9. Click Finish
 
-### Step 3: Install Kali
+### Step 3: Install Kali Linux
 
-Power on the VM and follow the Kali installation:
-1. Select "Graphical install"
+Power on the VM:
+1. Select "Graphical install" from the boot menu
 2. Choose your language and region
-3. Set hostname to "kali"
-4. Set domain to blank
-5. Set the full name and username to "kali"
-6. Set a password
-7. Partitioning: use "Guided - use entire disk" and accept defaults
-8. When asked about software selection, keep the default desktop environment
-9. Install GRUB to the main drive
-10. Wait for installation to complete
+3. Hostname: **kali**
+4. Domain name: leave blank
+5. Full name: **kali**
+6. Username: **kali**
+7. Set a password
+8. Partitioning: "Guided - use entire disk", select the 40 GB disk, "All files in one partition", confirm and write changes
+9. Software selection: keep the default desktop environment (Xfce) and default tools selected
+10. Install GRUB bootloader to the primary drive
+11. Complete installation and restart
 
-### Step 4: Set a Static IP
+### Step 4: Set a Static IP Address
 
-After booting into Kali, open a terminal and set the static IP:
+After booting into Kali and logging in, open a terminal.
+
+First, find out what your network interface is called:
+
+```bash
+ip link show
+```
+
+Look for an interface that is NOT "lo" (loopback). It will be something like `eth0`, `ens33`, or `ens160`. Note this name.
+
+Now configure the static IP. Edit the network interfaces file:
 
 ```bash
 sudo nano /etc/network/interfaces
 ```
 
-Add these lines (or modify the existing interface entry):
+Add these lines (replace `eth0` with your actual interface name if it is different):
 
 ```
 auto eth0
@@ -216,161 +379,252 @@ iface eth0 inet static
     netmask 255.255.255.0
 ```
 
-Save and exit (Ctrl+X, Y, Enter), then restart networking:
+Save the file (Ctrl+X, then Y, then Enter) and restart networking:
 
 ```bash
 sudo systemctl restart networking
 ```
 
-Note: The interface name might be different on your system. Run `ip link show` to see the actual interface name. If it shows something like `ens33` or `ens160` instead of `eth0`, use that name in the configuration.
-
-### Step 5: Install Required Tools
-
-Most of these are pre-installed on Kali, but verify each one:
+Verify the IP:
 
 ```bash
-# Check msfvenom (part of Metasploit)
+ip addr show eth0
+```
+
+You should see `inet 192.168.10.200/24` in the output.
+
+If your Kali uses NetworkManager instead of /etc/network/interfaces (which is the case on newer Kali builds with a desktop environment), use this method instead:
+
+```bash
+sudo nmcli con mod "Wired connection 1" ipv4.addresses 192.168.10.200/24
+sudo nmcli con mod "Wired connection 1" ipv4.method manual
+sudo nmcli con up "Wired connection 1"
+```
+
+The connection name might be different. Run `nmcli con show` to see the exact name.
+
+### Step 5: Verify Required Tools
+
+Kali comes with most of the tools you need pre-installed. Verify each one:
+
+```bash
+# msfvenom generates shellcode payloads
 msfvenom --version
+# Should output: Framework: X.X.X-dev
 
-# Check python3
+# python3 hosts files via HTTP server
 python3 --version
+# Should output: Python 3.X.X
 
-# Check smbclient
+# smbclient transfers files to/from Windows shares
 smbclient --version
+# Should output: Version 4.X.X
+```
 
-# If any are missing, install them:
+If any tool is missing:
+
+```bash
 sudo apt update
 sudo apt install -y metasploit-framework python3 smbclient
 ```
 
-## Testing the Network Connection
+### Step 6: Take a Snapshot
 
-### From Kali, ping Windows:
+Just like the Windows VM, snapshot Kali in its clean state:
+
+1. VM > Snapshot > Take Snapshot
+2. Name: "Clean - Lab Ready"
+3. Description: "Kali Linux, tools verified, IP 192.168.10.200"
+
+## Compilation and Execution
+
+### Testing Network Connectivity
+
+From Kali, ping Windows:
 
 ```bash
-ping 192.168.10.100
+ping -c 4 192.168.10.100
 ```
 
-### From Windows, ping Kali:
+You should see 4 replies. If you get "Destination Host Unreachable" or 100% packet loss:
 
-Open cmd and run:
+1. Verify both VMs are on the same host-only network (check VM Settings > Network Adapter on both VMs)
+2. Verify both static IPs are set correctly (`ip addr show` on Kali, `ipconfig` on Windows)
+3. On Windows, check if the firewall is blocking ICMP. Open Windows Defender Firewall > Advanced Settings > Inbound Rules > find "File and Printer Sharing (Echo Request - ICMPv4-In)" > right-click > Enable Rule. This allows ping without disabling the firewall.
+
+From Windows Command Prompt, ping Kali:
+
 ```
 ping 192.168.10.200
 ```
 
-Both pings should succeed. If they do not:
-1. Verify both VMs are using the same host-only network in VMware
-2. Verify the static IPs are set correctly
-3. On the Windows VM, check if the Windows Firewall is blocking pings. If it is, open Windows Defender Firewall > Advanced Settings > Inbound Rules > find "File and Printer Sharing (Echo Request - ICMPv4-In)" and enable it
-4. Do NOT disable the Windows Firewall entirely. Only enable the ICMP rule.
+Four replies confirm bidirectional connectivity.
 
-## Testing File Transfer
+### Testing File Transfer Method 1: Python HTTP Server
 
-You will need to transfer compiled loaders from Kali to Windows (or vice versa) throughout this curriculum. Test file transfer now to confirm it works.
-
-### Method 1: Python HTTP Server (Kali to Windows)
+This is the primary method you will use to transfer loaders from Kali to Windows.
 
 On Kali, create a test file and start a web server:
 
 ```bash
-echo "test file transfer" > /tmp/test.txt
+echo "file transfer test from kali" > /tmp/transfer_test.txt
 cd /tmp
 python3 -m http.server 8080
 ```
 
-On Windows, open a browser and go to:
+The terminal shows `Serving HTTP on 0.0.0.0 port 8080`. The server is running and will serve any file in /tmp to anyone who connects on port 8080.
+
+On Windows, open PowerShell and download the file:
+
+```powershell
+Invoke-WebRequest -Uri "http://192.168.10.200:8080/transfer_test.txt" -OutFile "C:\Users\kimjongun\Desktop\transfer_test.txt"
 ```
-http://192.168.10.200:8080/test.txt
+
+Then verify the file:
+
+```powershell
+Get-Content "C:\Users\kimjongun\Desktop\transfer_test.txt"
 ```
 
-If the file downloads, the transfer method works. Stop the Python server with Ctrl+C.
+You should see "file transfer test from kali". If this works, HTTP transfer is ready.
 
-Note: Windows Defender will scan downloaded files. This is expected and intentional. For this test file, Defender will not flag it. When you transfer actual loaders later, the way you get them onto the target without Defender flagging them will be covered in each document.
+On Kali, stop the Python server with Ctrl+C.
 
-### Method 2: SMB Share (Windows to Kali)
+This transfer method matters for the curriculum because when you generate shellcode on Kali and need to get it onto Windows, you will host it on the Python HTTP server and download it from Windows. Defender will scan the downloaded file, which is exactly what we want for testing - if the shellcode file gets flagged on download, you know the file itself contains detected bytes and needs encoding (which is what Loader 02 teaches).
 
-On Windows, create a shared folder:
-1. Create a folder called `C:\Share`
-2. Right-click it > Properties > Sharing > Share
-3. Add "Everyone" with Read/Write permissions
-4. Click Share
+### Testing File Transfer Method 2: SMB Share
 
-On Kali, access the share:
+SMB is useful when you need bidirectional file transfer, especially when pulling files from Windows to Kali for analysis.
+
+On Windows:
+1. Create a folder: `C:\Share`
+2. Right-click the folder > Properties > Sharing tab > Share
+3. In the sharing dialog, type "Everyone" in the name field and click Add
+4. Set the permission level to "Read/Write"
+5. Click Share, then Done
+
+On Kali, connect to the share:
+
 ```bash
 smbclient //192.168.10.100/Share -U kimjongun
 ```
 
-Enter the Windows password when prompted. You should see an `smb: \>` prompt where you can use `put` and `get` commands to transfer files.
+Enter the Windows user's password when prompted. You will see an `smb: \>` prompt. Test by creating a file:
 
-## Teaching the Code
+```
+smb: \> put /tmp/transfer_test.txt
+smb: \> ls
+smb: \> exit
+```
 
-There is no code to teach in this document. The lab setup is all infrastructure. Code starts in Document 02.
+On Windows, check C:\Share and you should see transfer_test.txt.
 
-## Compilation and Execution
+### Verifying the Build Toolchain
 
-No compilation in this document. To verify that the build toolchain works, open a command prompt on the Windows VM and run:
+On the Windows VM, open Command Prompt and run:
 
 ```
 mkdir C:\Users\kimjongun\Desktop\TestProject
 cd C:\Users\kimjongun\Desktop\TestProject
-dotnet new console -n HelloTest
-cd HelloTest
+dotnet new console -n BuildTest
+cd BuildTest
 dotnet run
 ```
 
-You should see "Hello, World!" printed. This confirms that the .NET SDK is installed and working. You can delete the TestProject folder after this test.
+You should see "Hello, World!" printed. This confirms the .NET SDK compiles and runs C# code correctly.
+
+Clean up:
+
+```
+cd C:\Users\kimjongun\Desktop
+rmdir /s /q TestProject
+```
 
 ## Confirming Success
 
-Your lab is ready when all of the following are true:
+Your lab is fully set up when every item on this list is verified:
 
-- [ ] Windows 11 VM is running with static IP 192.168.10.100
-- [ ] Windows Defender is fully enabled with real-time protection, cloud protection, and auto-updates
-- [ ] Visual Studio 2022 Community is installed
+**Windows 11 VM:**
+- [ ] Windows 11 Pro installed and fully updated
+- [ ] Static IP set to 192.168.10.100
+- [ ] Defender real-time protection: ON
+- [ ] Defender cloud-delivered protection: ON
+- [ ] Defender automatic sample submission: ON
+- [ ] Defender tamper protection: ON
+- [ ] Defender definitions are current (check for updates in Windows Security)
+- [ ] Visual Studio 2022 Community installed with .NET desktop development workload
 - [ ] `dotnet --version` returns 6.0 or later
-- [ ] Kali Linux VM is running with static IP 192.168.10.200
-- [ ] `msfvenom --version` works on Kali
-- [ ] `python3 --version` works on Kali
-- [ ] Windows can ping Kali (192.168.10.200)
+- [ ] `dotnet new console` and `dotnet run` produces "Hello, World!"
+- [ ] Snapshot taken ("Clean - Lab Ready")
+
+**Kali Linux VM:**
+- [ ] Kali Linux installed with default tools
+- [ ] Static IP set to 192.168.10.200
+- [ ] `msfvenom --version` works
+- [ ] `python3 --version` works
+- [ ] `smbclient --version` works
+- [ ] Snapshot taken ("Clean - Lab Ready")
+
+**Network and Transfers:**
 - [ ] Kali can ping Windows (192.168.10.100)
-- [ ] File transfer works using at least one method (Python HTTP or SMB)
-- [ ] `dotnet new console` and `dotnet run` works on Windows
+- [ ] Windows can ping Kali (192.168.10.200)
+- [ ] Python HTTP server file transfer works (Kali -> Windows)
+- [ ] SMB file transfer works (both directions)
 
 ## What Was Gained
 
-You now have a complete lab environment for the rest of this curriculum. You have:
-- A Windows 11 target with Defender fully active, exactly matching what you would find in a real organization
-- A Kali attacker machine with all the tools needed to generate payloads
-- Network connectivity between the two machines
-- A working C# build toolchain (Visual Studio + .NET SDK) ready to compile loaders
-- Verified file transfer between the machines
+You now have a complete, isolated lab that mirrors a real red team engagement setup:
 
-This means you can write C# code on the Windows VM, compile it, run it, and see how Defender reacts. You can generate shellcode on Kali, transfer it to Windows, and test whether your loaders can execute it without getting caught.
+- A Windows 11 target with production Defender settings, exactly what you would encounter on a real client machine. The Defender configuration matches what most organizations run because they use the default settings.
+- A Kali attacker machine with the tools needed to generate shellcode payloads (msfvenom), host files for transfer (python3 HTTP server), and interact with Windows file shares (smbclient).
+- An isolated network where you can test aggressive techniques without affecting your real network or triggering alerts on systems outside the lab.
+- A working C# build toolchain (.NET SDK) that can compile the loaders you will build in Documents 05 through 10.
+- Snapshots of both VMs in their clean state so you can reset to a known-good configuration at any time.
+
+The file transfer setup means you can move files between the two machines quickly. Throughout the curriculum, the workflow is: generate shellcode on Kali, transfer it to Windows, compile the loader on Windows, run the loader, and observe whether Defender catches it. Having transfer working now means you will not waste time debugging network issues when you should be focusing on evasion.
 
 ## Common Threats and Variations
 
 ### Variation 1: Using VirtualBox Instead of VMware
 
-VirtualBox is a free alternative to VMware. It works for this curriculum, but some features like shared folders and clipboard sharing are less reliable. If you use VirtualBox, create a "Host-only Adapter" for the isolated network and assign the same static IPs. The rest of the curriculum works the same way regardless of which hypervisor you use.
+VirtualBox is free and works as a hypervisor, but it has weaker TPM emulation and less reliable host-only networking. If you use VirtualBox:
+- Create a "Host-only Network" in VirtualBox (File > Host Network Manager)
+- Set the network to 192.168.10.0/24 with no DHCP
+- When creating VMs, attach a "Host-only Adapter" pointing to that network
+- For Windows 11, you may need to modify the registry during installation to bypass TPM and Secure Boot requirements (search for "VirtualBox Windows 11 registry bypass" for current instructions)
 
-### Variation 2: Using Physical Machines Instead of VMs
+Everything else in the curriculum works the same regardless of hypervisor.
 
-If you have two physical computers, you can connect them to an isolated switch (no internet connection) and use them as target and attacker. This is closer to a real engagement. The disadvantage is that if something goes wrong on the Windows machine, you cannot easily roll it back to a clean snapshot like you can with a VM.
+### Variation 2: Kali in WSL Instead of a Separate VM
 
-### Variation 3: Using WSL Instead of a Kali VM
+Windows Subsystem for Linux (WSL) can run Kali on your host machine. The advantage is lower resource usage (no separate VM). The disadvantages:
+- WSL shares the host's network, so it is not isolated. Your test traffic goes through your real network adapter.
+- WSL has limited access to raw sockets and some network features that Metasploit uses.
+- The separation between attacker and target is blurred because both run on the same machine.
 
-Windows Subsystem for Linux (WSL) on your host machine could replace the Kali VM for generating shellcode and running tools. However, WSL shares the host network, so it is not isolated. For learning purposes, a separate Kali VM is safer and more realistic.
+For learning, a separate Kali VM is better because it forces you to work across machines, which is how real engagements work.
+
+### Variation 3: Using Physical Machines
+
+If you have two physical computers and an isolated switch (no uplink to the internet), you can use physical hardware instead of VMs. The advantage is better performance. The disadvantages:
+- No snapshots. If something goes wrong, you reinstall from scratch.
+- You need a dedicated Windows 11 machine that you are willing to format and rebuild.
+- Physical machines are harder to reset between tests.
+
+For this curriculum, VMs are recommended because snapshots let you quickly restore a clean state between loader tests.
 
 ## Detection and Defense (Blue Team Perspective)
 
-This document covers lab setup, not attack techniques, so there are no specific defenses to discuss. However, there are general security practices relevant to the lab:
+This document covers lab setup, not attack techniques, so there are no attack-specific defenses to discuss. However, there are operational security practices that matter:
 
-**Snapshot your VMs.** Before you begin any testing, take a snapshot of both the Windows and Kali VMs in their clean, freshly-set-up state. If anything goes wrong during testing (accidental malware execution, system corruption), you can revert to the clean snapshot in seconds.
+**Keep your lab network isolated.** Verify your VM network settings before every testing session. If a VM accidentally gets bridged to your real network, your shellcode could make connections to real machines. Check VM Settings > Network Adapter before starting any testing.
 
-**Keep the lab network isolated.** The host-only network in VMware ensures that nothing in your lab reaches the internet or your real network. If you accidentally set the VMs to NAT or bridged networking, your test shellcode could reach real systems. Always verify the network setting is host-only.
+**Snapshot before testing.** Take a snapshot before running each new loader. If a loader behaves unexpectedly (crashes the VM, corrupts system files, or triggers Defender in a way that changes its configuration), you can restore the snapshot and start over.
 
-**Update Defender regularly.** Before each testing session, check for Defender updates. Signatures change frequently, and you want your lab to match real-world conditions as closely as possible.
+**Update Defender before testing.** Check for Defender definition updates at the start of each testing session. The signatures change frequently, and you want your lab to reflect current detection capabilities. A loader that bypasses month-old signatures but gets caught by current ones gives you a false sense of security.
+
+**Monitor Defender's quarantine.** Open Windows Security > Virus & threat protection > Protection history after each test. This shows what Defender caught, when it caught it, and which detection method was used (file scanning, behavior, cloud, etc.). This information tells you which Defender layer your loader failed to bypass, which directly informs what you need to fix.
 
 ## What Comes Next
 
-Start Document 02 (lab/materials/02_c_sharp_basics.md). It teaches you C# programming from scratch, using security-focused examples instead of boring textbook exercises. By the end of Document 02, you will know enough C# to understand every loader in this curriculum.
+Start Document 02 (lab/materials/02_c_sharp_basics.md). It teaches C# programming from zero using security-focused examples. Instead of writing programs that calculate interest rates or sort shopping lists, you will learn C# by writing programs that manipulate bytes, convert data between formats, and interact with the operating system. By the end of Document 02, you will understand enough C# to read and write every loader in this curriculum.
