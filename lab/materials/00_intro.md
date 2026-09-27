@@ -2,172 +2,217 @@
 
 ## What This Curriculum Is and What It Is Not
 
-This is a hands-on curriculum that teaches you to write C# programs that execute on a fully updated Windows 11 machine without Windows Defender stopping them. You will write real code, compile it, transfer it to a Windows target, and run it while Defender is fully active with default settings. Every technique you learn here is tested against production Defender, not a stripped-down version with protections turned off.
+This is a hands-on curriculum that teaches you to write C# programs that run on a fully updated Windows 11 machine without Windows Defender stopping them. You will write real code, compile it, transfer it to a Windows target, and run it while Defender is fully active with default settings. Every technique you learn here is tested against production Defender, not a stripped-down version with protections turned off.
 
-This is not a theoretical course. You will not read about evasion and then move on. You will write 8 working loaders, each one targeting a specific Defender detection layer, and you will test every single one in a live environment. When something gets caught, you will understand exactly which bytes Defender flagged and why, and you will modify the code until it passes.
+This is not a theoretical course. You will not read about evasion and move on. You will write 8 working loaders, each one targeting a specific Defender detection layer, and you will test every single one in a live environment. When something gets caught, you will understand exactly which bytes Defender flagged and why, and you will modify the code until it passes.
 
 This is also not a "disable Defender and run your payload" course. Anyone can turn off an antivirus. That is not a skill. On a real engagement, you cannot ask the client to disable their security products. The entire point is to write code that works while Defender is doing its job. That is what separates a red team operator who gets hired from someone who just runs other people's tools.
 
 ## Why C# and Not Python, Go, Rust, or C++
 
-This is a question you should be asking, because the language you write your tooling in has a direct effect on whether it works on a real target and whether companies will hire you to do this work. Here is why C# is the right choice for Windows evasion in 2026:
+The language you write your tooling in has a direct effect on whether it works on a real target and whether companies will hire you to do this work. Here is why C# is the right choice for Windows evasion in 2026:
 
-**C# runs natively on every Windows machine.** Every Windows 11 installation comes with the .NET runtime pre-installed. When you compile a C# program, the target machine can run it without installing anything extra. If you wrote your loader in Python, you would need Python installed on the target. If you wrote it in Go or Rust, you would produce a standalone binary, but it would not have native access to the .NET runtime that is already sitting on the target. C# code runs on the same runtime that Microsoft's own tools use, which means your loader looks like a normal .NET application from the operating system's perspective.
+**C# runs natively on every Windows machine.** Every Windows 11 installation comes with the .NET runtime pre-installed. The .NET runtime is a program that runs C# code. When you compile a C# program, the target machine can run it without installing anything extra. If you wrote your loader in Python, you would need Python installed on the target. C# code runs on the same runtime that Microsoft's own tools use, which means your loader looks like a normal .NET application from the operating system's perspective.
 
-**C# has direct access to the Windows API through P/Invoke.** P/Invoke (Platform Invocation Services) is a feature of .NET that lets you call any Windows API function directly from C# code. This matters because evasion requires calling low-level Windows functions like VirtualAlloc (to allocate memory), WriteProcessMemory (to write code into another process), and NtCreateThreadEx (to start a new thread). In C, you call these functions directly. In C#, P/Invoke gives you the same direct access without needing to write C. You get the power of low-level system programming with the speed and safety of a managed language.
+**C# has direct access to the Windows API through P/Invoke.** The Windows API is the collection of functions that Windows provides for programs to call. P/Invoke is a C# feature that lets you call any of these Windows functions from your C# code. This matters because evasion requires calling low-level Windows functions like VirtualAlloc (which asks Windows for a chunk of RAM with specific permissions), WriteProcessMemory (which copies bytes into another running program's RAM), and NtCreateThreadEx (which starts a new thread of execution). In C, you call these functions directly. In C#, P/Invoke gives you the same direct access without needing to write C.
 
 **C# is what real offensive tools are written in.** Cobalt Strike's execute-assembly feature runs .NET assemblies in memory. Covenant, Sliver's .NET modules, SharpCollection, GhostPack (Rubeus, Seatbelt, SharpUp, Certify, SharpHound) are all C#. When you go to a job interview for a red team position, they will ask you about .NET offensive tooling. If you say "I write my tools in Python", you are telling them you cannot operate on Windows targets without installing dependencies. If you say "I write custom C# loaders that bypass Defender using direct syscalls and dynamic API resolution", you are speaking their language.
 
-**C# gives you access to .NET reflection and in-memory execution.** The .NET runtime can load and execute assemblies (compiled .NET programs) entirely in memory, without ever writing them to disk. This is a massive advantage for evasion because Defender's strongest detection layer is file scanning. If your payload never touches the disk, Defender's file scanner never sees it. C# gives you System.Reflection.Assembly.Load() which loads a .NET assembly from a byte array in memory. No other mainstream language has this built into its standard runtime.
+**C# gives you access to .NET reflection and in-memory execution.** The .NET runtime can load and run compiled .NET programs entirely in RAM, without ever writing them to your hard drive. This is a huge advantage for evasion because Defender's strongest detection layer is file scanning, where it checks files on your hard drive. If your payload never touches the hard drive, Defender's file scanner never sees it. C# gives you System.Reflection.Assembly.Load() which loads a compiled .NET program from a byte array sitting in RAM. No other mainstream language has this built into its standard runtime.
 
-**C# compiles to MSIL, not native code, which creates specific evasion challenges you need to understand.** When you compile a C# program, it does not produce machine code like C or Rust. It produces MSIL (Microsoft Intermediate Language), which is a higher-level instruction set that the .NET runtime compiles to native code at execution time (this is called JIT, Just-In-Time compilation). This means your compiled binary contains metadata: class names, method names, string literals, and type information. Defender and other security products scan this metadata. If your class is called "ShellcodeInjector" and your method is called "InjectMalware", those strings are sitting in plain text in the compiled binary. Understanding how .NET metadata works and how to control what ends up in your binary is a critical evasion skill that only matters when you write in C#.
+**C# compiles to MSIL, not native code, which creates specific evasion challenges you need to understand.** When you compile a C# program, it does not produce machine code like C or Rust. It produces something called MSIL (Microsoft Intermediate Language), which is a set of instructions that the .NET runtime converts to machine code when the program actually runs. This conversion happens at runtime and is called JIT (Just-In-Time compilation). Because your compiled binary contains MSIL and not machine code, it also contains metadata: class names, method names, string literals, and type information. All of this metadata is readable text sitting in the compiled file. Defender and other security products scan this metadata. If your class is named "ShellcodeInjector" and your method is named "InjectMalware", those strings are sitting in plain text in the compiled binary. Understanding how .NET metadata works and how to control what ends up in your binary is a critical evasion skill.
 
-**The job market demands C#.** Look at any red team job posting from CrowdStrike, Mandiant, Palo Alto Unit 42, SpecterOps, TrustedSec, or NetSPI. The required skills section lists C# and .NET offensive development. The reason is simple: enterprise environments run Windows, Windows runs .NET, and the most effective offensive tools for Windows are written in C#. If you want a red team job that pays $150K-$220K+, C# evasion development is not optional. It is the core skill.
+**The job market demands C#.** Look at any red team job posting from CrowdStrike, Mandiant, Palo Alto Unit 42, SpecterOps, TrustedSec, or NetSPI. The required skills section lists C# and .NET offensive development. Enterprise environments run Windows, Windows runs .NET, and the most effective offensive tools for Windows are written in C#. If you want a red team job that pays $150K-$220K+, C# evasion development is not optional. It is the core skill.
 
 ## What Windows Defender Actually Does (The Detection Layers You Will Beat)
 
-To write code that bypasses Defender, you need to understand what Defender actually does when a program runs on a Windows 11 machine. Defender is not one single check. It is multiple detection layers running simultaneously, each watching for different things. Your code needs to bypass all of them at the same time.
+To write code that bypasses Defender, you need to understand what Defender actually does when a program runs on a Windows 11 machine. Defender is not a single check. It is six detection layers running at the same time, each watching for different things. Your code needs to get past all of them at once.
 
-**Layer 1: Static File Scanning.** When a file is created, downloaded, copied, or modified on the hard drive, Defender scans it immediately. This scan compares the file's bytes against a database of known malicious signatures. A signature is a specific sequence of bytes that Defender knows belongs to malware. For example, msfvenom's default reverse shell payload has specific byte patterns that Defender's signature database recognizes. If your file contains those bytes, Defender quarantines it before you can even run it. This is the first layer and the easiest to bypass. If you XOR-encrypt your shellcode before putting it on disk, the encrypted version has completely different bytes, and Defender's signatures do not match. That is what Loader 02 teaches.
+### Layer 1: Static File Scanning
 
-**Layer 2: Cloud-Based Analysis (Microsoft Defender SmartScreen and Cloud Protection).** When Defender sees a file it does not recognize, it sends a hash of that file (a unique fingerprint, not the file itself) to Microsoft's cloud servers. The cloud has a much larger database of malicious samples and can run machine learning models that detect suspicious characteristics. If the cloud says the file is malicious, Defender blocks it even if the local signature database did not catch it. Cloud analysis looks at things like: is this a very small executable that imports VirtualAlloc and CreateThread? Is this a .NET assembly with obfuscated method names? Has this exact hash been seen on other machines that got compromised? This layer is harder to bypass because it uses behavior patterns, not just byte signatures.
+Your computer has a hard drive where all your files are stored, and it has RAM (Random Access Memory) which is a rectangular chip on your motherboard, about the size of a ruler, where programs run temporarily. When a file is created, downloaded, copied, or modified on the hard drive, Defender scans it immediately. This scan compares the file's bytes against a database of known malicious byte sequences. Each known sequence is called a signature.
 
-**Layer 3: AMSI (Antimalware Scan Interface).** AMSI is a scanning interface that sits between scripting engines (PowerShell, VBScript, JavaScript, .NET) and Defender. When you run a PowerShell command, PowerShell sends the command text to AMSI before executing it. AMSI passes that text to Defender, and Defender scans it for malicious content. If Defender flags it, the command is blocked. This matters because many red team tools work through PowerShell or load .NET assemblies at runtime. Even if your .exe is not flagged on disk, the moment it runs a PowerShell command or loads a .NET assembly, AMSI scans that content and can block it. Loader 04 patches AMSI in memory so it stops scanning, which means your subsequent PowerShell commands and .NET loads are not checked.
+Here is what that means practically. The tool msfvenom (which you will use on Kali Linux to generate shellcode) produces a set of bytes. That specific set of bytes is in Defender's signature database. When you save those bytes as a file on the hard drive, Defender reads the file, finds those bytes, matches them against its database, and says "this is malware." Defender quarantines the file before you can even run it.
 
-**Layer 4: API Hooking (User-Mode Hooks on ntdll.dll).** This is where Defender gets sophisticated. When your program calls a Windows API function like VirtualAlloc or CreateRemoteThread, the call goes through ntdll.dll, which is the lowest user-mode DLL before the kernel. Defender (and EDR products) can place hooks on these functions inside ntdll.dll. A hook is a patch that redirects the function call through Defender's code first, so Defender can inspect what you are doing before the function actually executes. For example, if you call VirtualAlloc with PAGE_EXECUTE_READWRITE permissions (meaning you want memory that is both writable and executable), Defender's hook sees that and flags it as suspicious because legitimate programs rarely need executable writable memory. Loader 03 teaches direct syscalls, which skip ntdll.dll entirely and call the Windows kernel directly, bypassing all user-mode hooks.
+This is the first layer and the easiest to bypass. If you XOR-encrypt your shellcode before saving it as a file (XOR is a simple math operation that changes every byte), the encrypted version has completely different bytes. Defender's signatures do not match because the byte sequence is completely different from what Defender knows. That is what Loader 02 teaches.
 
-**Layer 5: ETW (Event Tracing for Windows).** ETW is a telemetry system built into Windows. Every process generates ETW events that describe what it is doing: which DLLs it loaded, which API calls it made, which memory regions it allocated, which threads it created. Defender and EDR products consume these events in real time to detect suspicious behavior patterns. Even if your code bypasses file scanning, AMSI, and API hooks, the ETW events still report what your process did. If Defender sees a sequence like "process allocated RWX memory, wrote shellcode-sized data, changed protection to executable, created a thread at that address", it recognizes that pattern as shellcode injection and flags it. Loader 07 patches the EtwEventWrite function in ntdll.dll so it returns immediately without writing any events. After the patch, your process goes dark from Defender's telemetry perspective.
+### Layer 2: Cloud-Based Analysis
 
-**Layer 6: Behavioral Analysis and Machine Learning.** Defender runs behavioral models that look at what a process does over time. These models check for patterns like: did this process create a suspended process and then write to its memory? Did it modify the protection of a memory region from writable to executable? Did it call QueueUserAPC on a suspended thread? These are not signature matches. They are behavioral patterns that machine learning models have been trained to recognize as malicious. This is the hardest layer to bypass because you cannot just change your bytes. You need to change your behavior. The combined evasion loader (Loader 08) addresses this by using legitimate-looking execution patterns: allocating memory as RW first and then changing to RX (which is what normal programs do), using NT functions that are not hooked, and clearing evidence from managed memory after use.
+When Defender sees a file it does not recognize from its local signature database, it creates a hash of the file. A hash is a unique number calculated from the file's bytes, like a fingerprint for files. Two files with even one byte different will have completely different hashes. Defender sends this hash (not the file itself) to Microsoft's cloud servers over the internet.
 
-Understanding these 6 layers is the foundation of everything in this curriculum. Each loader you build targets one or more of these layers, and the final loader combines all the bypasses into a single program.
+Microsoft's cloud has a much larger database of malicious samples and runs machine learning models that detect suspicious characteristics. If the cloud says the file is malicious, Defender blocks it even though the local signature database did not catch it. Cloud analysis looks at things like: is this a very small executable that calls VirtualAlloc and CreateThread? Is this a .NET program with scrambled method names? Has this exact hash been seen on other machines that got compromised?
 
-## What You Will Build (The 8 Loaders, In Depth)
+This layer is harder to bypass because it looks at behavior patterns, not just specific byte sequences.
+
+### Layer 3: AMSI (Antimalware Scan Interface)
+
+PowerShell is a Windows tool where you type commands and it runs them. When you type a PowerShell command and press Enter, something happens before the command runs. PowerShell sends the full text of your command to a system called AMSI. AMSI stands for Antimalware Scan Interface. AMSI takes that text and passes it to Defender. Defender checks the text for anything malicious. If Defender says the text is malware, AMSI tells PowerShell to block the command. If Defender says the text is clean, PowerShell runs the command.
+
+AMSI does not only check PowerShell. It checks VBScript, JavaScript, and .NET code too. So even if your .exe file passes the file scan on the hard drive, the moment your program runs PowerShell commands or loads .NET code at runtime, AMSI scans that content and can block it.
+
+AMSI works through a DLL file called amsi.dll. A DLL (Dynamic Link Library) is a file containing compiled functions that programs can call. The key function inside amsi.dll is called AmsiScanBuffer. Every time AMSI needs to check something, it calls AmsiScanBuffer, which sends the content to Defender.
+
+Loader 04 patches AmsiScanBuffer in your program's RAM so it immediately returns "this is clean" without actually sending anything to Defender. After the patch, every AMSI check says "clean" and nothing gets scanned.
+
+### Layer 4: API Hooking
+
+When your C# program calls a Windows function like VirtualAlloc (which asks Windows for a chunk of RAM), the call goes through a chain of DLL files before reaching the actual Windows kernel. The kernel is the core of the operating system that actually controls the hardware. The chain looks like this:
+
+```
+Your code -> kernel32.dll -> ntdll.dll -> Windows kernel
+```
+
+kernel32.dll is a DLL that contains commonly used Windows functions. ntdll.dll is a lower-level DLL that sits right before the kernel. Every function in kernel32.dll calls a corresponding function in ntdll.dll to do the real work.
+
+Defender inserts monitoring code at the start of functions inside ntdll.dll. This monitoring code is called a hook. When your program calls VirtualAlloc, kernel32.dll calls ntdll.dll, and before ntdll.dll does the actual work, Defender's hook runs first. The hook checks what you are requesting. Are you asking for RAM that the CPU can execute code from? How much RAM? The hook logs this information and decides if it looks suspicious. Then it lets the real function run.
+
+For example, if your program asks for a chunk of RAM with both write and execute permissions, Defender's hook sees that and flags it because legitimate programs rarely need RAM where you can both write data and run it as code.
+
+Loader 03 teaches direct syscalls, which skip ntdll.dll entirely and talk to the Windows kernel directly. If Defender's hooks are inside ntdll.dll and your program never calls ntdll.dll, the hooks never run.
+
+### Layer 5: ETW (Event Tracing for Windows)
+
+ETW stands for Event Tracing for Windows. It is a logging system built into Windows. Every running program generates ETW events that describe what it is doing: which DLL files it loaded, which Windows functions it called, which chunks of RAM it requested, which threads it created. Think of it as a detailed activity log for every program.
+
+Defender and other security products read these events in real time. Even if your code bypasses file scanning, AMSI, and API hooks, the ETW events still report what your program did. If Defender sees a sequence of events like "this program requested writable-executable RAM, wrote data into it, changed the permissions, and created a new thread at that address", Defender recognizes that sequence as shellcode injection.
+
+ETW works through a function called EtwEventWrite in ntdll.dll. Every time a program does something worth logging, it calls EtwEventWrite. Loader 07 patches this function the same way Loader 04 patches AmsiScanBuffer: it changes the first few bytes of the function so it immediately returns without writing any events. After the patch, your program's activity is invisible to any security tool reading ETW events.
+
+### Layer 6: Behavioral Analysis and Machine Learning
+
+Defender runs machine learning models that watch what a program does over time. These models look for patterns. Did this program create a new process in a suspended state and then write data into its RAM? Did it change the permissions on a chunk of RAM from writable to executable? Did it queue an APC (a special type of function call) on a suspended thread?
+
+These are not signature matches. Defender is not looking for specific bytes. It is looking at the sequence of actions your program takes. Machine learning models have been trained on thousands of malware samples and know which action sequences are suspicious.
+
+This is the hardest layer to bypass because you cannot just change your bytes. You need to change your behavior. The combined evasion loader (Loader 08) addresses this by following the same patterns that legitimate programs use: it requests RAM as read-write first (which is normal), copies data into it, then changes the permissions to execute-read (which is what legitimate programs that compile code at runtime also do). It uses lower-level functions from ntdll.dll that are not hooked, and it clears evidence from the .NET runtime's managed RAM after use.
+
+### Why All Six Layers Matter
+
+Understanding these 6 layers is the foundation of everything in this curriculum. Each loader you build targets one or more of these layers, and the final loader (Loader 08) combines all the bypasses into a single program that deals with all six layers at the same time.
+
+## What You Will Build (The 8 Loaders)
 
 Each loader is a standalone C# program that demonstrates a specific evasion technique. The loaders are ordered so each one builds on what you learned in the previous one.
 
 **Loader 01 - Basic Shellcode Loader (lab/loaders/01_shellcode_loader.cs)**
 
-This is your first working loader. It reads raw shellcode from a file, allocates a block of executable memory using VirtualAlloc, copies the shellcode into that memory, and creates a thread that starts executing at the shellcode's address. The shellcode runs entirely in memory and never writes itself to disk.
+This is your first working loader. It reads raw shellcode from a file, asks Windows for a chunk of RAM that the CPU can execute code from, copies the shellcode into that RAM, and creates a thread that starts running the shellcode. The shellcode runs entirely in RAM and never writes itself to the hard drive.
 
-This loader is intentionally basic and Defender WILL catch it. The reason it gets caught teaches you something critical: the loader's compiled binary contains strings like "shellcode", it uses VirtualAlloc with executable permissions in a suspicious pattern, and the shellcode file on disk matches known Metasploit signatures. You need to see what getting caught looks like before you can understand what evasion looks like.
+This loader is intentionally basic and Defender WILL catch it. The reason it gets caught teaches you something critical: the compiled binary contains names like "shellcode", it asks for executable RAM in a pattern Defender knows, and the shellcode file on the hard drive matches known Metasploit signatures. You need to see what getting caught looks like before you can understand what evasion looks like.
 
-What you learn from this loader:
-- How VirtualAlloc works (requesting memory from the operating system)
-- How Marshal.Copy works (copying bytes from a managed array into unmanaged memory)
-- How CreateThread works (telling the processor to start executing code at a specific memory address)
-- Why the shellcode file on disk gets flagged (Defender's static signatures match Metasploit output)
-- Why the binary itself gets flagged (suspicious API import pattern + string metadata)
+What you learn:
+- How VirtualAlloc works (asking Windows for a chunk of RAM)
+- How Marshal.Copy works (copying bytes into that RAM)
+- How CreateThread works (telling the CPU to start running code at a specific RAM address)
+- Why the shellcode file on the hard drive gets flagged (Defender's static signatures match the bytes msfvenom produces)
+- Why the binary itself gets flagged (suspicious function names in the import table plus string metadata)
 
 **Loader 02 - XOR Encoder/Decoder (lab/loaders/02_xor_encoder.cs)**
 
-This loader has two modes. In encoder mode, it takes raw shellcode and XOR-encrypts it with a key you provide, producing an encrypted file that looks like random data. In decoder/loader mode, it reads the encrypted file, decrypts it in memory using the same XOR key, and executes the decrypted shellcode.
+This loader has two modes. In encoder mode, it takes raw shellcode and XOR-encrypts every byte with a key you provide, producing an encrypted file that looks like random data. In decoder/loader mode, it reads the encrypted file, XOR-decrypts it in RAM, and runs the decrypted shellcode.
 
-XOR encryption is the simplest form of encoding, but it is effective against static signature scanning. Defender's signature database contains byte patterns from known payloads. When you XOR every byte of the shellcode with a key, every byte changes. The encrypted file does not match any signature because the byte sequence is completely different from the original. When the loader runs, it decrypts the shellcode in memory (where Defender's file scanner cannot see it) and then executes it.
+XOR encryption is simple but effective against static signature scanning. Defender's signature database contains byte patterns from known payloads. When you XOR every byte with a key, every byte changes. The encrypted file does not match any signature because the byte sequence is completely different from the original. When the loader runs, it decrypts the shellcode in RAM (where Defender's file scanner cannot see it) and runs it.
 
-What you learn from this loader:
-- How XOR encryption works (each byte is combined with a key byte using the XOR operation, and applying XOR again with the same key restores the original byte)
-- Why encrypted shellcode bypasses static signatures (the byte patterns Defender looks for no longer exist in the file)
-- The difference between on-disk representation and in-memory representation (encrypted on disk, decrypted only in memory)
+What you learn:
+- How XOR encryption works (each byte is combined with a key byte using XOR, and applying XOR again with the same key restores the original byte)
+- Why encrypted shellcode bypasses static signatures (the byte patterns Defender looks for do not exist in the encrypted file)
+- The difference between what is on the hard drive and what is in RAM (encrypted on the hard drive, decrypted only in RAM)
 - Why XOR alone is not enough (Defender has other detection layers beyond file scanning)
 
 **Loader 03 - Direct Syscalls Loader (lab/loaders/03_direct_syscalls_loader.cs)**
 
-When a C# program calls a Windows API function like VirtualAlloc, the call goes through this chain: your code -> kernel32.dll -> ntdll.dll -> kernel (via syscall instruction). Defender places hooks in ntdll.dll, which means it can intercept and inspect every API call your program makes. Direct syscalls skip the entire chain and call the kernel directly using the syscall assembly instruction with the correct syscall number.
+When a C# program calls a Windows function like VirtualAlloc, the call goes through the chain: your code, then kernel32.dll, then ntdll.dll, then the kernel. Defender places hooks in ntdll.dll to monitor every call. Direct syscalls skip the entire chain and call the kernel directly using the special syscall instruction that the CPU understands.
 
-This loader resolves NT function addresses dynamically at runtime (so the binary's import table does not contain suspicious function names), reads the syscall numbers from the function prologues, and executes the syscalls directly. From Defender's perspective, the API hooks in ntdll.dll are never triggered because the program never calls through ntdll.dll.
+This loader finds NT function addresses while the program is running (so the compiled binary's import table does not contain suspicious function names), reads the syscall numbers from the function code, and executes the syscalls directly. Defender's hooks in ntdll.dll are never triggered because the program never calls through ntdll.dll.
 
-What you learn from this loader:
-- How the Windows API call chain works (user code -> kernel32 -> ntdll -> kernel)
+What you learn:
+- How the Windows API call chain works (user code to kernel32 to ntdll to kernel)
 - What a syscall number is (each kernel function has a unique number that changes between Windows versions)
-- Why Defender hooks ntdll.dll and not kernel32.dll (ntdll.dll is the last user-mode stop before the kernel)
-- How to read syscall numbers from ntdll.dll function prologues at runtime
-- How dynamic API resolution works (resolving function addresses at runtime instead of declaring them as imports)
+- Why Defender hooks ntdll.dll and not kernel32.dll (ntdll.dll is the last stop before the kernel in user-mode code)
+- How to read syscall numbers from ntdll.dll function code at runtime
+- How dynamic API resolution works (finding function addresses while the program runs instead of declaring them in the import table)
 
 **Loader 04 - AMSI Bypass (lab/loaders/04_amsi_bypass.cs)**
 
-AMSI (Antimalware Scan Interface) is loaded into every process that uses .NET, PowerShell, VBScript, or JavaScript. The key function is AmsiScanBuffer in amsi.dll. When a script or .NET assembly is about to execute, the runtime calls AmsiScanBuffer with the content. AmsiScanBuffer passes the content to Defender, which returns a verdict (clean or malicious).
+AMSI is loaded into every program that uses .NET, PowerShell, VBScript, or JavaScript. The key function is AmsiScanBuffer in amsi.dll. When a script or .NET code is about to run, the runtime calls AmsiScanBuffer with the content. AmsiScanBuffer passes the content to Defender, which returns a verdict (clean or malicious).
 
-This loader patches AmsiScanBuffer in memory by overwriting its first few bytes with instructions that immediately return a "clean" result without actually scanning anything. After the patch, every call to AmsiScanBuffer returns AMSI_RESULT_CLEAN, so Defender never sees the content that was supposed to be scanned.
+This loader patches AmsiScanBuffer in RAM by overwriting its first few bytes with instructions that immediately return a "clean" result without actually scanning anything. After the patch, every call to AmsiScanBuffer returns "clean", so Defender never sees the content that was supposed to be scanned.
 
-The function names ("AmsiScanBuffer", "amsi.dll") are not stored as plain strings in the binary. They are constructed at runtime using integer arithmetic, so Defender's static scanner cannot find them by searching for known AMSI bypass strings.
+The function names ("AmsiScanBuffer", "amsi.dll") are not stored as plain text in the compiled binary. They are built at runtime using integer math, so Defender's static scanner cannot find them.
 
-What you learn from this loader:
+What you learn:
 - How AMSI works at the function level (which DLL, which function, what the parameters are)
-- What memory patching means (overwriting a function's code in memory to change its behavior)
-- Why you need to change memory protection before patching (code pages are read-only by default, you need VirtualProtect to make them writable)
-- How to construct strings at runtime to avoid static detection (integer offset arithmetic)
-- Why AMSI patching should happen AFTER ETW patching (the AMSI patch itself generates ETW events that Defender can see)
+- What memory patching means (overwriting a function's code in RAM to change its behavior)
+- Why you need to change RAM permissions before patching (code in RAM is read-only by default, you need VirtualProtect to make it writable)
+- How to build strings at runtime to avoid static detection (integer offset math)
+- Why AMSI patching should happen AFTER ETW patching (the AMSI patch itself generates ETW events that Defender can read)
 
 **Loader 05 - Reflective Injector (lab/loaders/05_reflective_injector.cs)**
 
-Instead of running your code in your own process (which Defender is watching), this loader writes your code into the memory of another process that is already running. You pick a legitimate process like explorer.exe or svchost.exe, open a handle to it, allocate memory inside it, write your shellcode into that memory, and create a thread in that process to execute it.
+Instead of running your code in your own program (which Defender is watching), this loader writes your code into the RAM of another program that is already running. You pick a program that Windows trusts, like explorer.exe (the program that shows your desktop and taskbar) or svchost.exe (a system service host). You open a connection to that program's RAM space, allocate RAM inside it, write your shellcode into that RAM, and create a thread inside that program to run it.
 
-The result is that your shellcode runs inside a trusted system process. In Task Manager, only explorer.exe or svchost.exe shows up. Your loader process can exit immediately after injection. From Defender's behavioral analysis perspective, the suspicious activity (memory allocation, shellcode execution) is happening inside a process that Defender expects to see running.
+The result is that your shellcode runs inside a trusted system process. In Task Manager, only explorer.exe shows up. Your loader program can exit immediately after injection. Defender's behavioral analysis sees the suspicious activity happening inside a process that Windows considers legitimate.
 
-What you learn from this loader:
-- How OpenProcess gives you a handle to another process's memory space
-- How VirtualAllocEx allocates memory inside another process (the "Ex" means external)
-- How WriteProcessMemory copies bytes from your process into another process
-- How CreateRemoteThread creates a thread inside another process that starts executing at the address where you wrote your shellcode
-- Why running inside a legitimate process provides cover (process reputation and expected behavior)
+What you learn:
+- How OpenProcess gives you access to another program's RAM space
+- How VirtualAllocEx allocates RAM inside another program (the "Ex" means external, meaning another program)
+- How WriteProcessMemory copies bytes from your program into another program
+- How CreateRemoteThread creates a thread inside another program that starts running your shellcode
+- Why running inside a legitimate process provides cover
 
 **Loader 06 - Early Bird APC Injection (lab/loaders/06_process_hollowing_alt.cs)**
 
-Classic process hollowing (creating a process, unmapping its image, replacing it with malicious code) is heavily detected. Defender specifically watches for the NtUnmapViewOfSection + write + resume pattern. Early Bird APC injection achieves the same goal through a different mechanism.
+Classic process hollowing (creating a program, removing its code, replacing it with malicious code) is heavily detected. Defender specifically watches for that pattern. Early Bird APC injection achieves the same goal through a different path.
 
-This loader creates a legitimate Windows process (like svchost.exe) in a SUSPENDED state using CreateProcess with the CREATE_SUSPENDED flag. The process exists but has not executed a single instruction yet. The loader allocates memory inside this suspended process, writes shellcode into it, and queues the shellcode address as an APC (Asynchronous Procedure Call) on the process's main thread. When the loader resumes the thread, Windows processes the queued APC first, which means your shellcode executes before the legitimate program's own code ever runs.
+This loader creates a legitimate Windows program (like svchost.exe) in a SUSPENDED state. The program exists but has not executed a single instruction yet. It is frozen. The loader allocates RAM inside this frozen program, writes shellcode into it, and queues the shellcode address as an APC (Asynchronous Procedure Call) on the program's main thread. An APC is a function that Windows queues to run on a specific thread. When the loader un-freezes the thread, Windows processes the queued APC first, which means your shellcode runs before the legitimate program's own code ever starts.
 
-The name "Early Bird" comes from the fact that your code runs at the very beginning of the process's life, before the process has loaded its own DLLs or initialized its own data. This makes it extremely difficult for behavioral analysis to distinguish your code from the legitimate process's initialization.
+The name "Early Bird" comes from the fact that your code runs at the very beginning of the process's life, before the process has loaded its own DLL files or set up its own data.
 
-What you learn from this loader:
-- How CREATE_SUSPENDED works (the process is created but its main thread is paused)
-- What an APC is (a function that Windows queues to run on a specific thread when that thread enters an alertable state)
-- Why a suspended thread is in an alertable state by default (making it a perfect APC target)
-- How this differs from process hollowing (no image unmapping, no suspicious NtUnmapViewOfSection call)
+What you learn:
+- How CREATE_SUSPENDED works (the program is created but its main thread is frozen)
+- What an APC is (a function that Windows queues to run on a specific thread)
+- How this differs from process hollowing (no code removal, no suspicious NtUnmapViewOfSection call)
 - Why this is harder to detect than CreateRemoteThread (APCs are a normal Windows mechanism used by legitimate system code)
 
 **Loader 07 - ETW Patch (lab/loaders/07_etw_patch.cs)**
 
-ETW is the telemetry backbone of Windows. Every process generates ETW events through the EtwEventWrite function in ntdll.dll. Security products (Defender, CrowdStrike Falcon, SentinelOne, Carbon Black) consume these events to detect suspicious behavior. Even if your shellcode bypasses file scanning, AMSI, and API hooks, the ETW events still report what your process did.
+ETW is the logging system that feeds information to Defender and other security products. Every running program generates ETW events through the EtwEventWrite function in ntdll.dll. Even if your shellcode bypasses file scanning, AMSI, and API hooks, the ETW events still report what your program did.
 
-This loader patches EtwEventWrite the same way Loader 04 patches AmsiScanBuffer: it overwrites the function's first bytes with instructions that return success immediately without actually writing any events. After the patch, every call to EtwEventWrite in your process returns STATUS_SUCCESS but does nothing. No events are generated, so security products receive no telemetry from your process.
+This loader patches EtwEventWrite the same way Loader 04 patches AmsiScanBuffer: it overwrites the function's first bytes with instructions that return success immediately without actually writing any events. After the patch, every call to EtwEventWrite in your program does nothing. No events are generated, so security products receive no activity data from your program.
 
-The patch bytes (xor eax, eax; ret) set the return value to 0 (STATUS_SUCCESS) and return immediately. The calling code thinks the event was written successfully, but nothing was actually logged.
+This loader is designed to run FIRST, before any other evasion technique. If you patch AMSI first and then patch ETW, the AMSI patching generates ETW events that Defender can read. If you patch ETW first, then patch AMSI, the AMSI patching is invisible because ETW is already silent.
 
-This loader is designed to run FIRST, before any other evasion technique. If you patch AMSI first and then patch ETW, the AMSI patching generates ETW events that Defender sees. If you patch ETW first, then patch AMSI, the AMSI patching is invisible because ETW is already dead.
-
-What you learn from this loader:
-- What ETW is and why it matters for detection (the telemetry system feeding Defender and EDR)
+What you learn:
+- What ETW is and why it matters for detection (the logging system feeding Defender and every EDR product)
 - Which function to patch (EtwEventWrite in ntdll.dll)
 - Why the execution order matters (ETW first, then AMSI, then everything else)
-- How the patch works at the assembly level (xor eax, eax sets return value to 0, ret returns from the function)
-- The limitation of user-mode ETW patching (kernel-mode ETW via the Microsoft-Windows-Threat-Intelligence provider cannot be patched from user mode)
+- How the patch works (the patch bytes set the return value to 0, which means success, and return immediately)
+- The limitation of this approach (kernel-mode ETW, which runs inside the Windows kernel itself, cannot be patched from a regular program)
 
 **Loader 08 - Combined Evasion Loader (lab/loaders/08_combined_evasion.cs)**
 
-This is the final loader. It combines every technique from Loaders 01 through 07 into a single program that executes in the correct order for maximum stealth:
+This is the final loader. It combines every technique from Loaders 01 through 07 into a single program that runs in the correct order for maximum stealth:
 
-1. Patch ETW (silence telemetry so nothing that follows is logged)
-2. Patch AMSI (disable content scanning so .NET and PowerShell payloads are not checked)
-3. Read and XOR-decrypt the shellcode in memory (nothing malicious exists on disk)
-4. Resolve NT functions dynamically using GetProcAddress and integer arithmetic for function names (no suspicious strings or imports in the binary)
-5. Allocate memory as PAGE_READWRITE first, write the shellcode, then change protection to PAGE_EXECUTE_READ (the two-step allocation avoids the RWX flag that behavioral analysis watches for)
-6. Execute via NtCreateThreadEx for local execution, or write into a remote process for injection
+1. Patch ETW (silence the logging system so nothing that follows gets logged)
+2. Patch AMSI (disable content scanning so .NET and PowerShell content is not checked)
+3. Read and XOR-decrypt the shellcode in RAM (nothing malicious exists on the hard drive)
+4. Find NT function addresses while the program runs using GetProcAddress and integer math for function names (no suspicious strings or function names in the compiled binary)
+5. Request RAM as read-write first, write the shellcode, then change permissions to execute-read (this two-step approach avoids having RAM that is both writable and executable at the same time, which behavioral analysis watches for)
+6. Run the shellcode using NtCreateThreadEx for local execution, or write it into another program for injection
 
-Every API name that would normally appear in the binary's import table is resolved dynamically at runtime. The binary's metadata uses neutral names (the compiled assembly is called "stealth_runner", not "combined_evasion"). All string literals in Console.WriteLine messages use generic terms instead of evasion terminology.
+Every function name that would normally appear in the compiled binary's import table is found while the program runs instead. The compiled binary uses neutral names (the assembly is called "stealth_runner", not "combined_evasion"). All text output uses generic terms instead of evasion terminology.
 
-What you learn from this loader:
+What you learn:
 - How to layer multiple evasion techniques in the correct order
 - Why order matters (ETW before AMSI, decryption before execution)
-- How dynamic API resolution eliminates suspicious imports from the PE import table
-- How to build function name strings at runtime using integer offset arithmetic
-- How the two-step memory allocation (RW then RX) avoids behavioral detection
-- How all the individual techniques combine into something that defeats multiple Defender layers simultaneously
+- How dynamic API resolution keeps suspicious function names out of the compiled file
+- How to build function name strings at runtime using integer offset math
+- How the two-step RAM allocation (read-write then execute-read) avoids behavioral detection
+- How all the individual techniques combine to defeat multiple Defender layers at the same time
 
 ## How This Gets You a Red Team Job
 
-This is not just a coding exercise. Every technique in this curriculum maps directly to skills that red team job postings require and that interviewers test for. Here is how:
+This is not just a coding exercise. Every technique in this curriculum maps directly to skills that red team job postings require and that interviewers test for.
 
 **Custom tooling development.** Every serious red team job posting lists "ability to develop custom tools" or "C#/.NET offensive development" as a required skill. Companies like CrowdStrike, Mandiant, SpecterOps, TrustedSec, NetSPI, and Praetorian want operators who can write their own tools, not operators who only run Cobalt Strike or Metasploit. When Defender catches a public tool, operators who can only run public tools are stuck. Operators who can write custom loaders adapt and keep going. After this curriculum, you can write custom loaders from scratch.
 
@@ -189,9 +234,9 @@ You do not need programming experience. Document 02 teaches C# from scratch. But
 - You have used Windows before (you know what Task Manager is, how to run programs from the command line)
 
 **Required hardware:**
-- A computer with at least 16 GB of RAM (two VMs run simultaneously)
+- A computer with at least 16 GB of RAM (two VMs run at the same time)
 - At least 100 GB free disk space
-- A processor with virtualization support (Intel VT-x or AMD-V, nearly all modern CPUs)
+- A processor with virtualization support (Intel VT-x or AMD-V, nearly all modern CPUs have this)
 
 **Required software (installed in Document 01):**
 - VMware Workstation Pro (free for personal use)
@@ -228,7 +273,7 @@ Lab Network: 192.168.10.0/24
              - This is the ATTACKER machine where payloads are created
 ```
 
-Defender stays enabled with default settings for the entire curriculum. You never disable it, never add exclusions, never weaken any setting. The curriculum teaches evasion against production Defender, not a gimped version.
+Defender stays enabled with default settings for the entire curriculum. You never disable it, never add exclusions, never weaken any setting. The curriculum teaches evasion against production Defender, not a weakened version.
 
 ## Curriculum Structure (11 Documents)
 
@@ -236,18 +281,18 @@ Defender stays enabled with default settings for the entire curriculum. You neve
 |----------|-------|----------------|
 | 00 | Introduction (this) | Why C#, how Defender works, what you will build, how this gets you hired |
 | 01 | Lab Setup | Build Windows 11 and Kali VMs, install all tools, verify networking |
-| 02 | C# Basics | Variables, types, loops, functions, arrays, byte manipulation - taught through security examples, not textbook exercises |
+| 02 | C# Basics | Variables, types, loops, functions, arrays, byte manipulation - taught through security examples |
 | 03 | Windows API | P/Invoke, DllImport, calling VirtualAlloc/CreateThread from C#, how .NET talks to the Windows kernel |
 | 04 | Memory Fundamentals | Process memory layout, virtual memory, VirtualAlloc, WriteProcessMemory, memory protection flags, thread creation |
 | 05 | Shellcode Loader | Generate shellcode with msfvenom, build Loader 01, understand why Defender catches it, learn what to fix |
-| 06 | Encoding Evasion | XOR encryption, build Loader 02, encrypt shellcode on disk, decrypt at runtime, bypass static signatures |
+| 06 | Encoding Evasion | XOR encryption, build Loader 02, encrypt shellcode on the hard drive, decrypt at runtime, bypass static signatures |
 | 07 | Direct Syscalls | Windows API call chain, syscall numbers, build Loader 03, bypass Defender's ntdll.dll hooks |
-| 08 | AMSI Bypass | How AMSI scans .NET and PowerShell, build Loader 04, patch AmsiScanBuffer in memory |
+| 08 | AMSI Bypass | How AMSI scans .NET and PowerShell, build Loader 04, patch AmsiScanBuffer in RAM |
 | 09 | Reflective Injection | Process injection, build Loaders 05 and 06, inject into remote processes, Early Bird APC |
 | 10 | Combined Evasion | Build Loader 08 (ETW + AMSI + XOR + dynamic resolution + NT functions), all layers combined |
 | 11 | Real World Scenarios | How these techniques work in actual red team engagements, what works against EDR, operational planning |
 
-**Do them in order.** Each document assumes you have completed the previous ones. Document 07 (Direct Syscalls) references memory allocation from Document 04. Document 10 (Combined Evasion) combines everything from Documents 05 through 09. Skipping ahead means the code and explanations will not make sense.
+**Do them in order.** Each document assumes you have completed the previous ones. Document 07 (Direct Syscalls) references RAM allocation from Document 04. Document 10 (Combined Evasion) combines everything from Documents 05 through 09. Skipping ahead means the code and explanations will not make sense.
 
 ## How Each Document Teaches Code
 
@@ -259,7 +304,7 @@ Every document uses the same teaching method. You never see a full program dumpe
 4. This continues until the entire program is covered
 5. Then the complete program is shown in full so you see how all the pieces connect
 
-Every technical term is explained the first time it appears. When a document says "VirtualAlloc", it explains that VirtualAlloc is a Windows function that asks the operating system to reserve a block of memory for your program to use, and it explains what the parameters mean and why you pass the values you pass. Nothing is assumed.
+Every technical term is explained the first time it appears. When a document says "VirtualAlloc", it explains that VirtualAlloc is a Windows function that asks the operating system to give your program a chunk of RAM with the permissions you specify, and it explains what the parameters mean and why you pass the values you pass. Nothing is assumed.
 
 ## Folder Structure
 
