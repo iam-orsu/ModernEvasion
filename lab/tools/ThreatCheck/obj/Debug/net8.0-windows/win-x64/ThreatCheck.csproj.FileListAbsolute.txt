@@ -1,0 +1,17 @@
+/home/user/ModernEvasion/lab/tools/ThreatCheck/obj/Debug/net8.0-windows/win-x64/ThreatCheck.csproj.AssemblyReference.cache
+/home/user/ModernEvasion/lab/tools/ThreatCheck/obj/Debug/net8.0-windows/win-x64/ThreatCheck.GeneratedMSBuildEditorConfig.editorconfig
+/home/user/ModernEvasion/lab/tools/ThreatCheck/obj/Debug/net8.0-windows/win-x64/ThreatCheck.csproj.CoreCompileInputs.cache
+/home/user/ModernEvasion/lab/tools/ThreatCheck/obj/Debug/net8.0-windows/win-x64/ThreatCheck.sourcelink.json
+/home/user/ModernEvasion/lab/tools/ThreatCheck/bin/Debug/net8.0-windows/win-x64/ThreatCheck.exe
+/home/user/ModernEvasion/lab/tools/ThreatCheck/bin/Debug/net8.0-windows/win-x64/ThreatCheck.dll.config
+/home/user/ModernEvasion/lab/tools/ThreatCheck/bin/Debug/net8.0-windows/win-x64/ThreatCheck.deps.json
+/home/user/ModernEvasion/lab/tools/ThreatCheck/bin/Debug/net8.0-windows/win-x64/ThreatCheck.runtimeconfig.json
+/home/user/ModernEvasion/lab/tools/ThreatCheck/bin/Debug/net8.0-windows/win-x64/ThreatCheck.dll
+/home/user/ModernEvasion/lab/tools/ThreatCheck/bin/Debug/net8.0-windows/win-x64/ThreatCheck.pdb
+/home/user/ModernEvasion/lab/tools/ThreatCheck/bin/Debug/net8.0-windows/win-x64/CommandLine.dll
+/home/user/ModernEvasion/lab/tools/ThreatCheck/obj/Debug/net8.0-windows/win-x64/ThreatCheck.csproj.CopyComplete
+/home/user/ModernEvasion/lab/tools/ThreatCheck/obj/Debug/net8.0-windows/win-x64/ThreatCheck.dll
+/home/user/ModernEvasion/lab/tools/ThreatCheck/obj/Debug/net8.0-windows/win-x64/refint/ThreatCheck.dll
+/home/user/ModernEvasion/lab/tools/ThreatCheck/obj/Debug/net8.0-windows/win-x64/ThreatCheck.pdb
+/home/user/ModernEvasion/lab/tools/ThreatCheck/obj/Debug/net8.0-windows/win-x64/ThreatCheck.genruntimeconfig.cache
+/home/user/ModernEvasion/lab/tools/ThreatCheck/obj/Debug/net8.0-windows/win-x64/ref/ThreatCheck.dll

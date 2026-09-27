@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "ZglayCHr3eChTT/nLhzJhS3iAkP0aFaYraJBrD1vs/MBoQxB5+V5H3yj4jl9DlV880xxklYBkLiD7RWs7dUMig==",
+  "success": true,
+  "projectFilePath": "/home/user/ModernEvasion/lab/tools/ThreatCheck/ThreatCheck.csproj",
+  "expectedPackageFiles": [
+    "/root/.nuget/packages/commandlineparser/2.9.1/commandlineparser.2.9.1.nupkg.sha512",
+    "/root/.nuget/packages/microsoft.netcore.app.host.win-x64/8.0.31/microsoft.netcore.app.host.win-x64.8.0.31.nupkg.sha512"
+  ],
+  "logs": []
+}
