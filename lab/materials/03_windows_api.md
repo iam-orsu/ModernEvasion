@@ -30,15 +30,24 @@ Open Task Manager on your Windows VM (press Ctrl+Shift+Esc), click the Performan
 
 Right now on your Windows VM, dozens of things are happening. Explorer is showing your desktop, Defender is scanning in the background, the taskbar clock is updating every minute, your mouse cursor is moving around. None of these programs handle all of this by themselves. They all ask Windows to do the work.
 
-When you double-click a .exe file on your desktop, Windows copies that program from the hard drive into RAM, creates a new process for it, and starts running it. When the program wants to show a window on screen, it asks Windows to create the window. Windows draws the title bar, the close button, the minimize button, and the window border. The program only tells Windows what text to put in the title bar and how big the window should be.
+When you double-click a .exe file on your desktop, Windows copies that program from the hard drive into RAM, creates a new process for it, and starts running it. When the program wants to show a window on screen, it asks Windows to create the window. Windows draws the title bar, the close button, the minimize button, and the window border.
 
-You can see this happening right now. Right-click on your desktop. A menu appears with options like "New," "Display settings," "Personalize." That menu was created by a Windows function. The desktop program told Windows "show a menu with these options next to the mouse cursor," and Windows drew it, positioned it, and detected your click on one of the options.
+Try it right now. Right-click on your desktop. A menu appears with options like "New," "Display settings," "Personalize." That menu was created by a Windows function. The desktop program told Windows "show a menu with these options next to the mouse cursor," and Windows drew it, positioned it, and detected your click.
 
-When a program shows a "Save As" dialog with the folder browser, that entire dialog is a single Windows function call. The program said "show a Save dialog," and Windows created the entire thing: the folder tree, the file name box, the Save button, all of it.
+This is not limited to things you see on screen:
 
-This is not limited to things you see on screen. When a program reads a file from your hard drive, it calls a Windows function. When a program connects to the internet, it calls a Windows function. When Task Manager shows you a list of running processes with their CPU and RAM usage, Task Manager is calling Windows functions to get that information.
+- When a program reads a file from your hard drive, it calls a Windows function
+- When a program connects to the internet, it calls a Windows function
+- When Task Manager shows you running processes, it calls Windows functions to get that information
+- When a program shows a "Save As" dialog, that entire dialog is a single Windows function call
 
-Windows controls everything on the computer. Programs run on top of Windows and ask it to do things by calling functions. The collection of all the functions that Windows provides for programs to call is called the Windows API. API stands for Application Programming Interface. You already know what an API is from web development: you send a request to a server, and the server does the work and sends back a result. The Windows API is the same idea, except your program is calling functions on the same computer instead of sending HTTP requests to a remote server.
+Windows controls everything on the computer. Programs run on top of Windows and ask it to do things by calling functions.
+
+### What Is the Windows API
+
+The collection of all the functions that Windows provides for programs to call is called the **Windows API**. API stands for Application Programming Interface.
+
+You already know what an API is from web development: you send a request to a server, and the server does the work and sends back a result. The Windows API is the same idea, except your program is calling functions on the same computer instead of sending HTTP requests to a remote server.
 
 ### Connecting This to Web APIs You Already Know
 
@@ -54,39 +63,58 @@ Both cases are the same idea: you ask a system to do work for you by calling a f
 
 ### Where Windows API Functions Live: DLL Files
 
-Windows has thousands of API functions. They are organized into files called DLLs. DLL stands for Dynamic Link Library. A DLL is a file on your hard drive that contains a collection of compiled functions that any program can call.
+Windows has thousands of API functions. They are organized into files called **DLLs**. DLL stands for Dynamic Link Library. A DLL is a file on your hard drive that contains a collection of compiled functions that any program can call.
 
 You can see these files right now. Open File Explorer on your Windows VM and go to `C:\Windows\System32\`. You will see hundreds of .dll files. Each file contains a group of related functions.
 
-The DLLs that matter for this curriculum:
+The four DLLs that matter for this curriculum:
 
-**kernel32.dll** contains functions for core operations. Functions for working with RAM (requesting a chunk of RAM, giving it back, changing what you can do with it), managing processes (starting programs, opening running programs), managing threads (creating new threads of execution inside a program), and working with files. This is the most important DLL for the loaders because it has the RAM and thread functions needed to run shellcode.
+**kernel32.dll** - Core operations.
+Functions for working with RAM (requesting it, giving it back, changing permissions), managing processes (starting programs, opening running programs), managing threads (creating new threads inside a program), and working with files. This is the most important DLL for the loaders because it has the RAM and thread functions needed to run shellcode.
 
-**user32.dll** contains functions for everything you see on screen. Creating windows, showing dialog boxes, handling mouse clicks, drawing menus, managing the clipboard. This DLL is not important for the loaders, but it is useful for learning because the functions produce results you can see on your screen immediately.
+**user32.dll** - Screen and interface.
+Creating windows, showing dialog boxes, handling mouse clicks, drawing menus. Not important for the loaders, but useful for learning because the functions produce results you can see on your screen immediately.
 
-**ntdll.dll** contains the lowest-level functions before the actual Windows kernel (the core of the operating system). Every function in kernel32.dll internally calls a function in ntdll.dll to do the real work. For example, when you call VirtualAlloc from kernel32.dll to request a chunk of RAM, kernel32 internally calls NtAllocateVirtualMemory in ntdll.dll, and ntdll makes the actual request to the Windows kernel. This matters for evasion because Defender inserts monitoring code inside kernel32.dll functions. If you skip kernel32.dll and call ntdll.dll directly, Defender's monitoring code never runs. Document 07 teaches this.
+**ntdll.dll** - Lowest-level functions before the Windows kernel.
+Every function in kernel32.dll internally calls a function in ntdll.dll to do the real work. For example, when you call VirtualAlloc from kernel32.dll, kernel32 internally calls NtAllocateVirtualMemory in ntdll.dll, and ntdll makes the actual request to the Windows kernel.
 
-**amsi.dll** contains functions for the Antimalware Scan Interface. When PowerShell wants to check if a script is malicious before running it, it calls a function in amsi.dll. That function sends the script to Defender for scanning. If Defender says the script is malware, amsi.dll tells PowerShell to block it. Document 08 teaches you to modify amsi.dll's functions so they stop sending scripts to Defender.
+This matters for evasion: Defender inserts monitoring code inside kernel32.dll functions. If you skip kernel32.dll and call ntdll.dll directly, Defender's monitoring code never runs. Document 07 teaches this.
+
+**amsi.dll** - Antimalware Scan Interface.
+When PowerShell wants to check if a script is malicious before running it, it calls a function in amsi.dll. That function sends the script to Defender for scanning. If Defender says the script is malware, amsi.dll tells PowerShell to block it. Document 08 teaches you to modify amsi.dll's functions so they stop sending scripts to Defender.
 
 ### How C# Calls a Windows API Function
 
-All the C# programs you wrote in Document 02 run inside something called the .NET runtime. The .NET runtime is a layer between your C# code and the operating system. It manages your program's RAM for you, handles type checking, and cleans up after your program.
+All the C# programs you wrote in Document 02 run inside something called the **.NET runtime**. The .NET runtime is a layer between your C# code and the operating system. It manages your program's RAM, handles type checking, and cleans up after your program.
 
-Windows API functions are not written in C#. They are written in C and C++ and they do not run inside the .NET runtime. They run directly on the operating system. So there is a gap: your C# code runs inside the .NET runtime, and Windows functions run outside it on the operating system directly.
+Windows API functions are not written in C#. They are written in C and C++ and run directly on the operating system, outside the .NET runtime. So there is a gap: your C# code runs inside the .NET runtime, and Windows functions run outside it.
 
-C# has a built-in feature that lets you cross this gap. The feature is called P/Invoke. That name stands for Platform Invoke. "Platform" means the Windows platform (the operating system). "Invoke" means to call. So P/Invoke literally means "call something on the Windows platform." It is a feature built into C# that lets you write a description of a Windows function in your C# code and then call it as if it were a normal C# function you wrote yourself.
+C# has a built-in feature that crosses this gap. The feature is called **P/Invoke**, which stands for Platform Invoke. "Platform" means the Windows platform (the operating system). "Invoke" means to call. P/Invoke lets you describe a Windows function in your C# code and then call it as if it were a normal C# function.
 
-You use P/Invoke by writing `[DllImport]` above a function description. DllImport tells C# which DLL file the function lives in. You then describe the function's name, what parameters it takes, and what it gives back. After that, you call it like any other function. C# handles everything in between: it finds the DLL file, locates the function inside it, converts your C# data to the format the Windows function expects, calls the function, converts the result back to C# format, and gives you the return value.
+**How you use P/Invoke:**
+
+1. Write `[DllImport("dllname.dll")]` to tell C# which DLL the function lives in
+2. Describe the function's name, parameters, and return type
+3. Call it like any other function
+
+C# handles everything in between: it finds the DLL file, locates the function inside it, converts your C# data to the format the Windows function expects, calls the function, and converts the result back to C# format.
 
 ## What Defender Does
 
-Defender monitors how programs interact with Windows API functions in several ways:
+Defender monitors how programs interact with Windows API functions at three levels:
 
-**Scanning the import table.** When you compile a C# program that uses DllImport, the compiled file contains a list of every DLL and function your program calls. This list is called the import table. Defender reads this list before the program even runs. If the import table shows that your program calls VirtualAlloc, CreateThread, and WriteProcessMemory together, Defender flags it as suspicious because that combination of functions is commonly used for code injection.
+**Scanning the import table.**
+When you compile a C# program that uses DllImport, the compiled file contains a list of every DLL and function your program calls. This list is called the **import table**. Defender reads this list before the program even runs.
 
-**Hooking functions.** When your program runs and calls a function like VirtualAlloc from kernel32.dll, Defender has already modified the beginning of VirtualAlloc. Defender inserted a small piece of code (called a hook) that redirects the call to Defender's monitoring code first. Defender checks what you are requesting (how much RAM, what permissions), logs the activity, decides if it looks suspicious, and then lets the real VirtualAlloc run. Document 07 teaches you to bypass these hooks by calling ntdll.dll directly.
+If the import table shows VirtualAlloc + CreateThread + WriteProcessMemory together, Defender flags it as suspicious because that combination is commonly used for code injection.
 
-**Watching for suspicious sequences.** A program calling VirtualAlloc alone is not suspicious. But a program that requests a chunk of RAM, copies data into it, changes the permissions to executable, and then creates a new thread at that address matches the exact pattern of a shellcode loader. Defender watches for this sequence of calls.
+**Hooking functions.**
+When your program runs and calls VirtualAlloc from kernel32.dll, Defender has already modified the beginning of that function. Defender inserted a small piece of code (called a **hook**) that redirects the call to Defender's monitoring code first.
+
+Defender checks what you are requesting (how much RAM, what permissions), logs the activity, decides if it looks suspicious, and only then lets the real VirtualAlloc run. Document 07 teaches you to bypass these hooks by calling ntdll.dll directly.
+
+**Watching for suspicious sequences.**
+A program calling VirtualAlloc alone is not suspicious. But a program that requests RAM, copies data into it, changes permissions to executable, and creates a new thread at that address matches the exact pattern of a shellcode loader. Defender watches for this sequence.
 
 ## The Evasion Technique
 
@@ -305,16 +333,17 @@ Run it. It prints a number like 7832 or 4516. Open Task Manager, find "dotnet" i
 
 ### Part 4: What Is a Handle
 
-Almost every Windows API function that gives you access to something returns a handle. You need to understand what handles are before going further.
+Almost every Windows API function that gives you access to something returns a **handle**. You need to understand what handles are before going further.
 
-When you open a file in Notepad, Windows does not give Notepad direct access to the hard drive location where that file sits. Instead, Windows gives Notepad a number. Just a number, like 164 or 2048. Notepad holds onto that number, and every time it wants to read from or write to the file, it passes that number back to Windows and says "do this to whatever 164 refers to." Windows looks up 164 in its own internal records, finds the file, and does the operation.
+When you open a file in Notepad, Windows does not give Notepad direct access to the hard drive location where that file sits. Instead, Windows gives Notepad a number, like 164 or 2048. Notepad holds onto that number, and every time it wants to read from or write to the file, it passes that number back to Windows and says "do this to whatever 164 refers to."
 
-That number is called a handle. A handle is a reference number that Windows gives to a program so the program can refer to a specific resource (a file, a running process, a thread, a chunk of RAM) without having direct access to it. Windows keeps track of what each handle refers to internally.
+A handle is a reference number that Windows gives to a program so the program can refer to a specific resource without having direct access to it. Windows keeps track of what each handle refers to internally.
 
-Handles are used for everything in Windows, not just files:
-- When you open another running process with OpenProcess, Windows gives you a handle to that process
-- When you create a new thread with CreateThread, Windows gives you a handle to that thread
-- When you open a file, Windows gives you a handle to that file
+Handles are used for everything in Windows:
+
+- Open another running process with OpenProcess → Windows gives you a handle to that process
+- Create a new thread with CreateThread → Windows gives you a handle to that thread
+- Open a file → Windows gives you a handle to that file
 
 In C#, handles are stored as `IntPtr` values. When a Windows function fails and cannot give you what you asked for, it returns `IntPtr.Zero` (the number zero), meaning "I could not do it, there is no valid handle." So every time you call a Windows function that returns a handle, you check if you got zero:
 
@@ -344,13 +373,17 @@ This tells Windows "I am done with this resource, you can clean it up." If you d
 
 Now we get to the functions that matter for shellcode execution. VirtualAlloc asks Windows to give your program a chunk of RAM with specific permissions.
 
-In Document 02, you created byte arrays with `new byte[256]`. The .NET runtime gave your program space in RAM for that array. But the .NET runtime controls that RAM completely. It decides where in RAM the array goes. It can move the array to a different location in RAM during garbage collection (an automatic cleanup process where C# frees up RAM that is no longer being used). And most importantly, the .NET runtime marks all of its RAM as data-only. The CPU is not allowed to run code from RAM that the .NET runtime manages.
+In Document 02, you created byte arrays with `new byte[256]`. The .NET runtime gave your program space in RAM for that array. But the .NET runtime controls that RAM completely:
 
-This is because of a security feature called DEP, which stands for Data Execution Prevention. DEP tells the CPU "this section of RAM contains data, not code, so do not try to run it as instructions." DEP exists to stop attackers from putting malicious code into a data area and running it. Every modern operating system has DEP enabled.
+- It decides where in RAM the array goes
+- It can move the array during garbage collection (an automatic cleanup process where C# frees unused RAM)
+- Most importantly, it marks all of its RAM as **data-only**
+
+The CPU is not allowed to run code from RAM that the .NET runtime manages. This is because of a security feature called **DEP** (Data Execution Prevention). DEP tells the CPU "this section of RAM contains data, not code, so do not try to run it as instructions." Every modern operating system has DEP enabled.
 
 Shellcode is code. You want the CPU to run it as instructions. So you cannot put shellcode into a regular C# byte array because DEP stops the CPU from executing it.
 
-VirtualAlloc solves this problem. It asks Windows directly (not the .NET runtime) to give you a chunk of RAM. When you make this request, you specify what permissions you want on that chunk: can you read from it, can you write to it, and can the CPU execute code from it. If you ask for execute permission, Windows gives you a chunk of RAM where the CPU is allowed to run code. DEP does not block it because you explicitly asked for execute permission through a legitimate Windows function.
+**VirtualAlloc solves this.** It asks Windows directly (not the .NET runtime) to give you a chunk of RAM. When you make this request, you specify what permissions you want: can you read from it, can you write to it, and can the CPU execute code from it. If you ask for execute permission, Windows gives you RAM where the CPU is allowed to run code. DEP does not block it because you explicitly asked for execute permission through a legitimate Windows function.
 
 ```csharp
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -373,17 +406,21 @@ The four parameters:
 
 `uint flProtect` sets the permissions. This is the most important parameter:
 
-- `0x04` is PAGE_READWRITE. You can read from this RAM and write to it. The CPU cannot execute code from it.
-- `0x20` is PAGE_EXECUTE_READ. The CPU can execute code from this RAM and you can read from it. You cannot write to it.
-- `0x40` is PAGE_EXECUTE_READWRITE. You can read, write, and execute. All permissions at once.
+| Value | Name | What It Allows |
+|-------|------|---------------|
+| `0x04` | PAGE_READWRITE | Read and write. CPU cannot execute. |
+| `0x20` | PAGE_EXECUTE_READ | CPU can execute and read. Cannot write. |
+| `0x40` | PAGE_EXECUTE_READWRITE | Read, write, and execute. All at once. |
 
-Using `0x40` is the simplest approach because you can write your shellcode in and the CPU can execute it without any extra steps. But RAM that is both writable and executable at the same time is very unusual for legitimate programs. Defender flags this. The safer approach is:
+Using `0x40` is the simplest approach because you can write shellcode in and execute it without any extra steps. But RAM that is both writable and executable at the same time is very unusual for legitimate programs. **Defender flags this.**
 
-1. Request RAM with `0x04` (read-write only, so you can write your shellcode into it)
+The safer approach:
+
+1. Request RAM with `0x04` (read-write only, so you can write shellcode into it)
 2. Copy your shellcode bytes into that RAM
 3. Change the permissions to `0x20` (execute-read only, so the CPU can run it but nobody can write to it anymore)
 
-This way, the RAM is never writable and executable at the same time. While you are writing to it, the CPU cannot execute from it. After the CPU can execute from it, nobody can write to it.
+This way, the RAM is never writable and executable at the same time.
 
 Now call VirtualAlloc:
 
@@ -574,7 +611,9 @@ After this call, the CPU is allowed to run the bytes at address `mem` as instruc
 
 The data is in RAM. The RAM has execute permission. The last step is telling the CPU to start running the bytes at that address.
 
-Your program already has one thread running. That thread is executing your Main function right now. A thread is a sequence of instructions that the CPU follows one by one. Your program can create additional threads, and each thread runs at the same time, independently of the others. You can see threads in Task Manager too: right-click any process, click "Go to details," and the Threads column shows how many threads that process has.
+Your program already has one thread running, executing your Main function right now. A **thread** is a sequence of instructions that the CPU follows one by one. Your program can create additional threads, and each thread runs at the same time, independently of the others.
+
+You can see threads in Task Manager: right-click any process, click "Go to details," and the Threads column shows how many threads that process has.
 
 CreateThread creates a new thread that starts running at a specific address in RAM. If that address contains your shellcode, the CPU starts executing your shellcode:
 
@@ -705,7 +744,9 @@ The CPU started executing at the address in RAM. It found the byte 0xC3 (RET), w
 
 ### Part 9: GetModuleHandle and GetProcAddress - Finding Functions Without DllImport
 
-Every DllImport you write puts the function name into the compiled binary's import table. The import table is a list inside the .exe or .dll file that says "this program uses these functions from these DLLs." Defender reads this list. If your import table says your program uses VirtualAlloc, VirtualProtect, and CreateThread together, Defender knows this combination is used for code injection and flags your program before it even runs.
+Every DllImport you write puts the function name into the compiled binary's **import table**. The import table is a list inside the .exe or .dll file that says "this program uses these functions from these DLLs."
+
+Defender reads this list. If your import table shows VirtualAlloc + VirtualProtect + CreateThread together, Defender flags your program before it even runs because that combination is used for code injection.
 
 To avoid putting function names in the import table, you can find functions while the program is running using two Windows functions: GetModuleHandle and GetProcAddress.
 
