@@ -42,9 +42,15 @@ The result: your shellcode runs inside a legitimate process (like explorer.exe),
 
 ## How This Works
 
+### Why Order Matters
+
+Each evasion technique you learned disables or avoids one of Defender's detection layers. But some of those layers watch what other layers are doing. If you disable AMSI before disabling ETW, the act of patching AMSI generates telemetry events through ETW, and Defender reads those events and sees that something tampered with AMSI. If you decrypt your shellcode before disabling AMSI, the decrypted bytes pass through AMSI's scanner and might get flagged. Each step in the evasion chain needs the previous step to have already cleared the way.
+
+Defender's six detection layers are not independent. They are connected, and some layers feed information to other layers. ETW sends telemetry that the behavioral ML model uses to make detection decisions. If AMSI catches something, it generates an ETW event. If an API hook catches something, it also generates an ETW event. Patching ETW first cuts off that information flow, so when you patch AMSI next, there is no telemetry system left to report what you just did. When you decrypt shellcode after that, there is no AMSI scanner left to inspect the decrypted bytes. The order creates a cascade where each step makes the next step safe.
+
 ### The Execution Order
 
-The order in which you apply evasion techniques matters. Loader 08 executes in this exact sequence:
+Loader 08 executes in this exact sequence:
 
 ```
 Step 1: Patch ETW (EtwEventWrite in ntdll.dll)

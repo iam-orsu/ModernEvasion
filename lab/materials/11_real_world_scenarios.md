@@ -19,16 +19,11 @@ You can now compile C# loaders, encrypt shellcode, patch system functions, resol
 
 ## Why This Is Next
 
-You learned evasion in a controlled lab with one target, one attacker, and one security product (Defender). Real engagements are different:
+Everything you have done so far was in a controlled lab. One target machine, one attacker machine, one security product (Defender), and no one watching. In a real red team engagement, the situation is completely different.
 
-- The target network has hundreds or thousands of machines, not one.
-- Multiple security products are running (Defender plus a third-party EDR plus a SIEM plus network monitoring).
-- Security teams are actively watching for suspicious activity.
-- You need to maintain access for days or weeks, not minutes.
-- You need to move laterally (from one machine to others) without getting caught.
-- You need to extract data without triggering network alerts.
+The company you are testing has hundreds or thousands of machines on their network, not just one. They are running Defender plus a third-party EDR product plus a SIEM (Security Information and Event Management system that collects logs from everywhere) plus network monitoring that watches traffic coming in and going out. There is a security team actively watching dashboards for anything suspicious. You need access that lasts for days or weeks, not the few minutes it takes to get a Meterpreter shell. You need to move from the first machine you compromise to other machines on the network without getting caught. And you need to find and extract sensitive data without triggering network alerts.
 
-This document bridges the gap between your lab and the field. It does not introduce new code or new loaders. Instead, it explains the decisions you make during a real engagement and how the techniques from this curriculum apply.
+This document does not introduce new code or new loaders. Instead, it walks through real engagement scenarios and shows you where the techniques from this curriculum fit, where they fall short, and what you need to learn next.
 
 ## Scenario 1: Initial Access on a Corporate Workstation
 
@@ -82,11 +77,11 @@ The risk increases as you spend more time on the machine. Defender's periodic me
 
 ### The Situation
 
-The company uses CrowdStrike Falcon, Carbon Black, SentinelOne, or another third-party EDR product in addition to Defender. EDR products are more advanced than Defender alone. They use kernel-level monitoring, memory scanning, behavioral analysis, and cloud-based threat intelligence.
+The company uses CrowdStrike Falcon, Carbon Black, SentinelOne, or another third-party EDR product on top of Defender. EDR stands for Endpoint Detection and Response. These products are much more aggressive than Defender alone because they run their own monitoring code at the kernel level, scan process memory more frequently, analyze behavior using cloud-based machine learning, and maintain their own threat intelligence databases separate from Microsoft's.
 
 ### What Changes
 
-**Kernel-level ETW is active.** Third-party EDR products typically use the Microsoft-Windows-Threat-Intelligence ETW provider, which runs in the kernel. Your user-mode EtwEventWrite patch does not affect kernel-mode providers. The EDR sees your memory allocations, thread creation, and process injection through kernel callbacks even though user-mode ETW is patched.
+**Kernel-level ETW is still active.** In Document 08, you patched EtwEventWrite in ntdll.dll, which is a user-mode function. Third-party EDR products use the Microsoft-Windows-Threat-Intelligence ETW provider, which runs inside the Windows kernel itself. Your user-mode patch does not touch the kernel. The EDR still sees your memory allocations, thread creation, and process injection through kernel callbacks even though user-mode ETW is dead.
 
 **User-mode hooks are more aggressive.** EDR products hook more functions than Defender does. Defender primarily hooks a few dozen critical functions in ntdll.dll. EDR products can hook hundreds of functions, including functions you might not expect (like GetProcAddress itself, or VirtualProtect). This means your dynamic resolution calls might be intercepted by EDR hooks.
 

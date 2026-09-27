@@ -70,9 +70,11 @@ After the injection, your shellcode is running inside the target process. If you
 
 ### Early Bird APC Injection (Loader 06)
 
-APC stands for Asynchronous Procedure Call. It is a Windows feature that lets you queue a function to run on a specific thread. The thread executes the queued function the next time it enters an "alertable" state (a state where it checks for and runs pending APCs).
+Remote thread injection works well, but it has a limitation: the target process is already running and might already have security monitoring hooks loaded inside it. Some EDR products inject their own monitoring DLLs into every running process. By the time you inject your shellcode into explorer.exe, the EDR's monitoring code is already there watching what happens.
 
-Early Bird injection uses this feature with a twist: you create a brand new process in a suspended state, which means the process exists but its main thread has not started running yet. A suspended thread is in an alertable state by default. So if you queue your shellcode as an APC on the suspended thread and then resume the thread, the APC (your shellcode) runs before the process's own code ever executes.
+Early Bird injection solves this by getting your code to run before any monitoring hooks are set up. Instead of injecting into a process that is already running, you create a brand new process but tell Windows to pause it immediately (before it runs any code). Then you write your shellcode into the paused process's memory and tell Windows "when this process resumes, run my code first." When you unpause the process, your shellcode runs at the very beginning of the process's life, before any security product has a chance to inject its monitoring hooks. Your code runs in a clean process with no watchers.
+
+This works because of a Windows feature called APC, which stands for Asynchronous Procedure Call. APC lets you queue a function to run on a specific thread. When a thread is created in a suspended state (paused), it is in what Windows calls an "alertable" state by default. When a suspended thread resumes, Windows checks if any APCs have been queued on it and runs them first. So if you queue your shellcode as an APC on the paused thread and then resume the thread, your shellcode executes before the process's own code starts.
 
 The steps are:
 

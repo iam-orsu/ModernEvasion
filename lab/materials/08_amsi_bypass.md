@@ -36,32 +36,40 @@ After this document, you will have two utility loaders that you can call before 
 
 ## How This Works
 
-### ETW: The Logging System
+### ETW: Why Windows Tracks What Programs Do
 
-ETW stands for Event Tracing for Windows. It is a logging system that is built into every version of Windows from XP onward. Every process on Windows generates ETW events constantly. When your process allocates memory, creates a thread, opens a file, connects to a network, or does almost anything, ETW writes a log entry describing what happened.
+When you run a program on Windows, Windows needs to know what that program is doing. Is it allocating memory? Creating threads? Connecting to the internet? Windows needs this information because Defender cannot protect the system if it does not know what programs are up to. Without some kind of tracking, a malicious program could do anything it wants and Defender would have no idea.
 
-These log entries flow to consumers. A consumer is any program that has registered to receive ETW events. Defender is one consumer. EDR (Endpoint Detection and Response) products are another. When Defender reads ETW events from your process and sees a pattern that matches malicious behavior (allocate memory, write to it, make it executable, create a thread pointing to it), Defender flags your process.
+So Windows has a built-in tracking system called ETW, which stands for Event Tracing for Windows. It has been part of every Windows version since XP. Here is how it works: every time your program does something (allocates memory, opens a file, creates a thread, connects to a network), Windows writes a log entry that describes what happened. These log entries are called ETW events.
 
-The function responsible for writing ETW events is called EtwEventWrite. It lives inside ntdll.dll. Every time your process generates a loggable event, Windows calls EtwEventWrite to send that event to all registered consumers. If EtwEventWrite stops working, no events get sent. The consumers (Defender, EDR products) receive nothing. Your process goes dark from a telemetry perspective.
+Defender reads these log entries in real time. When Defender sees a sequence like "this program allocated memory, wrote data into it, made it executable, and created a thread pointing to it", Defender recognizes that as the shellcode injection pattern and blocks the program. Without ETW, Defender would not know that sequence of events happened.
 
-There is an important limitation here. The ETW we are patching is the user-mode ETW provider. There is also a kernel-mode ETW provider called Microsoft-Windows-Threat-Intelligence that runs inside the Windows kernel. Because the kernel runs at a higher privilege level than your process, you cannot patch it from user mode. Default Windows Defender primarily uses user-mode ETW telemetry, so patching user-mode EtwEventWrite is enough to blind Defender. Some advanced EDR products use the kernel provider, and this patch does not affect them. Document 11 discusses what happens when you face those more advanced products.
+The function responsible for writing all these log entries is called EtwEventWrite. It lives inside ntdll.dll. Every time your program does something that needs to be logged, Windows calls EtwEventWrite to send the log entry to Defender and any other security product that is listening. Here is the important part: if EtwEventWrite stops working, no log entries get sent. Defender receives nothing. Your program goes dark. Defender cannot detect suspicious behavior patterns if it never receives the events that describe the behavior.
 
-### AMSI: The Script Scanner
+There is one important limitation. The ETW we are patching is the user-mode version. There is also a kernel-mode ETW provider called Microsoft-Windows-Threat-Intelligence that runs inside the Windows kernel itself. Because the kernel runs at a higher privilege level than your program, you cannot patch it from user mode. Default Windows Defender primarily uses user-mode ETW telemetry, so patching user-mode EtwEventWrite is enough to blind Defender. Some advanced EDR products use the kernel provider, and this patch does not affect them. Document 11 discusses what happens when you face those products.
 
-AMSI stands for Antimalware Scan Interface. It is a security feature that Microsoft added in Windows 10. AMSI sits between scripting engines and Defender. The scripting engines that use AMSI include PowerShell, VBScript, JScript, and the .NET Common Language Runtime (CLR).
+### AMSI: Why Windows Checks PowerShell Commands
 
-Here is what happens when you run a PowerShell command:
+PowerShell is a command-line tool that comes pre-installed on every Windows computer. It is extremely powerful. You can use PowerShell to download files from the internet, run programs in memory, manage user accounts, read and write the registry, and control nearly everything on the system. System administrators use it every day because it makes managing Windows computers fast and easy.
+
+Hackers noticed the same thing. Because PowerShell is already on every Windows machine, hackers started using it to run malicious commands. They did not need to bring their own malware onto the computer. They just opened PowerShell and typed commands that download and execute payloads, dump passwords, or move through a network. This is called "living off the land" because you use tools that are already on the machine instead of bringing your own.
+
+Microsoft had a problem. They could not remove PowerShell because millions of system administrators depend on it. But they needed a way to stop hackers from abusing it. So they created AMSI, which stands for Antimalware Scan Interface. Microsoft added AMSI in Windows 10, and it is still active in Windows 11.
+
+AMSI's job is simple. Before PowerShell runs any command you type, AMSI checks that command with Defender first. Here is the step-by-step flow:
 
 1. You type a command into PowerShell.
-2. Before PowerShell executes the command, it passes the command text to the AMSI interface.
-3. AMSI sends the command text to Defender (or whatever antimalware product is installed).
+2. Before PowerShell runs the command, it passes the command text to AMSI.
+3. AMSI sends the command text to Defender.
 4. Defender checks the command against its signature database.
-5. If Defender says the command is malicious, AMSI tells PowerShell to block it. You see an error message.
+5. If Defender says the command is malicious, AMSI tells PowerShell to block it. You see an error message saying the script was blocked.
 6. If Defender says the command is clean, AMSI tells PowerShell to run it normally.
 
-AMSI is implemented as a DLL called amsi.dll. This DLL gets loaded into every process that hosts a scripting engine. The main function inside amsi.dll is called AmsiScanBuffer. When a scripting engine wants to check content, it calls AmsiScanBuffer with the content bytes and AmsiScanBuffer returns a result code. If the result code says "malicious", the engine blocks the content. If the result code says "clean" or if the function returns an error, the engine allows the content.
+AMSI does not only check PowerShell. It also checks VBScript, JScript, and the .NET runtime (which is what runs your C# programs). So when your C# loader runs, AMSI can check the managed code inside it.
 
-That last part is the weakness. If AmsiScanBuffer returns an error code, the scripting engine treats it the same as "clean" and allows the content to run. Our patch overwrites the beginning of AmsiScanBuffer with instructions that make it return the error code E_INVALIDARG (0x80070057) immediately, without scanning anything. Every subsequent call to AmsiScanBuffer returns this error, the scripting engine thinks the scan failed (not that the content is malicious), and it allows everything through.
+AMSI is implemented as a DLL file called amsi.dll. This DLL gets loaded into every process that hosts a scripting engine. The main function inside amsi.dll is called AmsiScanBuffer. When PowerShell (or any scripting engine) wants to check content, it calls AmsiScanBuffer with the content bytes. AmsiScanBuffer talks to Defender and returns a result code that says either "this is malicious, block it" or "this is clean, allow it."
+
+Here is the weakness that makes our bypass work. If AmsiScanBuffer returns an error code instead of a real scan result, the scripting engine does not treat the error as "something is wrong, block everything." Instead, it treats the error as "the scan could not be done, allow the content." Our patch overwrites the beginning of AmsiScanBuffer with instructions that make it return the error code E_INVALIDARG (0x80070057) immediately, without scanning anything. After the patch, every call to AmsiScanBuffer returns this error. The scripting engine thinks the scan failed, not that the content is malicious, and it allows everything through.
 
 ### Why ETW Must Be Patched Before AMSI
 
