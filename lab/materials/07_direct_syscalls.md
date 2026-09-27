@@ -48,6 +48,18 @@ Each layer in this chain is a DLL file loaded into your program's memory. Defend
 
 ### What a Hook Looks Like in Memory
 
+To understand hooks, you need to understand what lives inside a function like NtAllocateVirtualMemory. A function is a sequence of bytes in memory. Each byte or group of bytes is a machine instruction: a single command for the CPU. These bytes are also called assembly code when written in human-readable form.
+
+The CPU has small storage locations built inside the chip itself, called registers. A register is not RAM. It is inside the CPU directly, and the CPU uses registers to hold values it is currently working with. Common registers are `rcx`, `r10`, and `eax`. Each holds one number. On 64-bit Windows, when you call a function and pass arguments, the first argument goes into `rcx`, the second goes into `rdx`, and so on. The CPU uses `eax` to hold return values: when a function finishes, the caller reads `eax` to see what the function returned.
+
+Here is what machine instructions look like. The hex bytes on the left are what is actually stored in memory. The text on the right is the same instruction written in human-readable form:
+
+- `mov r10, rcx` copies the value from register `rcx` to register `r10`. This preserves the first function argument before the next instruction might overwrite `rcx`.
+- `mov eax, 0x18` puts the number 0x18 into `eax`. The Windows kernel uses `eax` to identify which system function you are requesting. For NtAllocateVirtualMemory, Windows assigned it the number 0x18.
+- `syscall` is the instruction that actually crosses into the Windows kernel. The CPU switches from user mode (where your program runs) to kernel mode (where Windows runs), looks at the number in `eax`, and runs the corresponding kernel function. This is what allocates memory, creates threads, and does everything else that needs kernel privileges.
+- `ret` ends the function and returns to the caller.
+- `jmp` makes the CPU jump to a different address and continue running code from there instead of continuing with the next instruction.
+
 The normal first bytes of NtAllocateVirtualMemory in ntdll.dll look something like this:
 
 ```
