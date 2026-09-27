@@ -2,124 +2,105 @@
 
 ## Where We Are
 
-You have a working lab from Document 01. Your Windows 11 VM has Visual Studio 2022 and the .NET SDK installed. Your Kali VM has msfvenom, python3, and smbclient. Both machines are on the same host-only network (192.168.10.0/24) and can ping each other. File transfer works both ways.
+You have a working lab from Document 01. Your Windows 11 VM has Visual Studio 2022 and the .NET SDK installed. Your Kali VM has msfvenom, python3, and smbclient. Both machines can ping each other on 192.168.10.0/24.
 
 At this point you know:
-- Why C# is the right language for Windows evasion (Document 00)
+- Why C# is the language for Windows evasion (Document 00)
 - How Defender's 6 detection layers work (Document 00)
-- Your lab is fully set up with Defender at default settings (Document 01)
-- You can compile and run C# code using `dotnet run` on the Windows VM
+- Your lab is running with Defender at full default settings (Document 01)
+- You can compile and run C# with `dotnet run` on the Windows VM
 
-You have zero C# programming experience. That is fine. This document teaches you everything you need to know about C# to build every loader in this curriculum. You will not learn C# the way a textbook teaches it (calculating averages, sorting lists, building web apps). You will learn C# by manipulating bytes, converting data formats, working with memory, and calling operating system functions. Every example in this document is something you will actually use in a loader.
+You have zero C# programming experience. This document fixes that. By the end, you will understand every line of code in every loader this curriculum builds.
 
 ## Why This Is Next
 
-You cannot build evasion tools without knowing the language they are written in. Documents 05 through 10 each build a working loader in C#, and every line of code in those loaders uses concepts taught in this document. If you skip this and jump to the loaders, you will be copying code without understanding it, and when Defender catches your loader (and it will), you will not know how to modify the code to bypass the detection.
+Documents 05 through 10 each build a working evasion loader in C#. Every loader reads data from a file, changes it, puts it into memory, and tells the computer to run it. If you do not understand how C# stores data, repeats actions, reads files, and organizes code into reusable pieces, you will be copying code without understanding it. When Defender catches your loader and you need to change the code to avoid detection, you will not know what to change or why.
 
-C# is also not difficult to learn for what we need. You do not need to learn the entire language. You need to know: how to store data in variables, how to work with bytes and byte arrays, how to write functions, how to use loops, how to convert between data types, and how to structure a program. That covers about 10% of C# but it is the 10% that every loader uses.
+You do not need to learn all of C#. You need a specific set of skills: storing and changing data, working with raw bytes, repeating operations, organizing code into functions, reading files, and accepting input from the command line. That is what this document teaches, and every single concept here appears in the loaders.
 
 ## How This Works
 
-C# is a programming language created by Microsoft. When you write C# code and compile it, the compiler does not produce machine code (the raw instructions your CPU runs). Instead, it produces MSIL (Microsoft Intermediate Language), which is a set of instructions for the .NET runtime. When you run the compiled program, the .NET runtime's JIT (Just-In-Time) compiler translates the MSIL into machine code on the fly.
+C# is a programming language made by Microsoft. You write code in a text file ending with .cs, and the compiler turns it into a program you can run. The compiled program runs on the .NET runtime, which is pre-installed on every Windows machine. This is one of the reasons C# is ideal for evasion: you do not need to install anything on the target machine to run your code.
 
-This matters for evasion because the compiled binary (.exe or .dll) contains MSIL, not machine code. MSIL is higher-level than machine code and includes metadata: the names of your classes, methods, variables, and string literals are all embedded in the binary in readable form. If you name your class "ShellcodeInjector" and your method "InjectMalware", those exact strings are sitting in the compiled binary where Defender's scanner can find them. Understanding this is why we renamed all our loaders' classes and methods to neutral names during threat validation (Phase 3).
-
-A C# program starts in a file with the .cs extension. The program has a structure: it belongs to a namespace (a grouping mechanism), contains a class (a container for code), and has a Main method (the entry point where execution starts). Every loader follows this structure.
+When you compile C# code, the compiler produces something called MSIL (Microsoft Intermediate Language), not the raw machine instructions your CPU understands. The .NET runtime translates MSIL to machine instructions when you run the program. The important thing for evasion is that the compiled file contains readable information about your code: the names of your classes, the names of your functions, and every piece of text you put in quotes in your code. All of that sits in the compiled file where Defender can read it. This is why naming things matters, and why later documents teach you to avoid putting sensitive words in your code.
 
 ## What Defender Does
 
-Defender does not directly affect how you write C# code, but it affects what happens to the compiled output. When you compile a C# program into an .exe or .dll, Defender scans the resulting file. Defender looks at:
+While you are learning C# basics, Defender does not directly interfere. But Defender will scan every .exe and .dll you compile. The things Defender looks for in compiled C# files include:
 
-- **String literals in the binary.** If your code contains `Console.WriteLine("Injecting shellcode into process")`, that exact string is stored in the compiled binary. Defender's signatures include strings commonly found in malware.
-- **Class and method names in .NET metadata.** The compiled binary's metadata section contains every class name, method name, and namespace name. A class called `AmsiBypass` in namespace `ShellcodeLoader` is a red flag.
-- **Import table entries.** When you use `[DllImport("kernel32.dll")]` to import a Windows API function, the function name appears in the binary's import table. A binary that imports `VirtualAlloc`, `WriteProcessMemory`, and `CreateRemoteThread` together is suspicious because that combination is the classic process injection pattern.
-- **Byte patterns.** The MSIL instructions for certain operations (like calling VirtualAlloc with specific flags) produce recognizable byte sequences that signature scanners match.
+- Text strings embedded in the binary (like if you write `Console.WriteLine("Injecting shellcode")`, those words are stored in the file)
+- Class and function names (a class called "ShellcodeInjector" is a red flag)
+- The names of Windows functions your program imports (certain combinations of function names are suspicious)
 
-None of this matters while you are learning C# basics in this document. But knowing that the compiler embeds your code's names and strings into the binary explains why, in later documents, you will see techniques like building strings from integer arithmetic and resolving API functions dynamically at runtime.
+None of this matters yet because the programs in this document are harmless learning exercises. But understanding that the compiler embeds your code's names and text into the output file explains decisions you will see in the loaders later.
 
 ## The Evasion Technique
 
-There is no evasion technique in this document. This is a programming fundamentals document. The evasion starts in Document 05 (Shellcode Loader). However, every code pattern you learn here is chosen because it appears in the loaders. You will not learn anything in this document that you do not use later.
+No evasion technique in this document. This is programming fundamentals. Evasion starts in Document 05.
 
 ## Getting the Loader Onto the Target
 
-No loader exists yet. This section applies starting from Document 05.
+No loader exists yet. This applies from Document 05 onward.
 
 ## Teaching the Code
 
-### Your First C# Program
+### Setting Up Your Workspace
 
-Open a Command Prompt on the Windows VM and create a new project:
+Open a Command Prompt on the Windows VM:
 
 ```
 mkdir C:\Users\kimjongun\Desktop\CSharpLab
 cd C:\Users\kimjongun\Desktop\CSharpLab
-dotnet new console -n Lesson01
-cd Lesson01
+dotnet new console -n Lesson
+cd Lesson
 ```
 
-This creates a folder called Lesson01 with a file called Program.cs inside it. Open Program.cs in Visual Studio or any text editor. Replace its contents with:
+This creates a folder with a file called Program.cs. You will edit this file for every example. Open it in Visual Studio or Notepad. Replace whatever is in there with the code from each section.
 
-```csharp
-using System;
-
-class Program
-{
-    static void Main(string[] args)
-    {
-        Console.WriteLine("Red team operator reporting in.");
-    }
-}
-```
-
-Now run it:
+To run your code after editing:
 
 ```
 dotnet run
 ```
 
-Output: `Red team operator reporting in.`
+### Part 1: The Structure of a C# Program
 
-Here is what each line does:
+Every C# program has the same basic skeleton. Replace the contents of Program.cs with this:
 
 ```csharp
 using System;
 ```
 
-This line tells the compiler that your program uses the `System` namespace. A namespace is a collection of pre-built code that someone else wrote. The `System` namespace contains basic things like `Console` (for printing text to the screen) and `Convert` (for converting between data types). Without this line, you would have to write `System.Console.WriteLine` instead of just `Console.WriteLine`.
+This first line tells C# that you want to use a collection of pre-built tools called `System`. One of those tools is `Console`, which lets you print text to the screen. Without this line, C# does not know what `Console` is.
 
 ```csharp
 class Program
 {
 ```
 
-A class is a container for your code. In C#, all code must live inside a class. The name `Program` is a convention but you can name it anything. The curly brace `{` starts the class body.
+In C#, all your code has to live inside something called a class. Think of a class as a container. You name it (here it is called `Program` but the name does not matter), and everything between the curly braces `{` and `}` belongs to that container.
 
 ```csharp
     static void Main(string[] args)
     {
 ```
 
-`Main` is the entry point of your program. When you run the compiled binary, the .NET runtime looks for a method called `Main` and starts executing there. `static` means this method belongs to the class itself, not to an instance of the class (this distinction does not matter for our purposes, just know that Main must be static). `void` means this method does not return a value. `string[] args` is an array of command-line arguments passed to the program.
+This is the starting point of your program. When you run the compiled file, the computer looks for a function called `Main` and starts running the code inside it. Every C# program needs exactly one `Main` function. The `string[] args` part lets your program accept input from the command line, which you will use later.
 
 ```csharp
         Console.WriteLine("Red team operator reporting in.");
 ```
 
-`Console.WriteLine` prints text to the terminal and adds a newline at the end. The text between the double quotes is a string literal. This exact string will be embedded in the compiled binary's metadata, which is why in the actual loaders, we avoid putting evasion-related terms in Console.WriteLine messages.
+This line prints text to the screen. Whatever you put between the double quotes shows up in the terminal when you run the program. `Console.WriteLine` prints the text and then moves to the next line.
 
 ```csharp
     }
 }
 ```
 
-Closing braces end the Main method and the Program class.
+These closing braces end the `Main` function and the `Program` class.
 
-### Variables and Data Types
-
-A variable is a named container that holds a value. In C#, every variable has a type that determines what kind of value it can hold.
-
-Create a new file or modify Program.cs:
+Here is the complete program with all the pieces together:
 
 ```csharp
 using System;
@@ -128,60 +109,127 @@ class Program
 {
     static void Main(string[] args)
     {
-        // Integer: whole numbers (no decimal point)
+        Console.WriteLine("Red team operator reporting in.");
+    }
+}
+```
+
+Run it with `dotnet run`. You should see: `Red team operator reporting in.`
+
+That is your first C# program. Every program in this curriculum follows this same skeleton: `using System;` at the top, a class wrapping everything, and a `Main` function where execution begins.
+
+### Part 2: Variables - Storing Data
+
+A program needs to store information while it runs. The port number your payload connects to, the IP address of your attacker machine, the name of a process you want to target. In C#, you store information in variables.
+
+A variable has two parts: a type (what kind of data it holds) and a name (how you refer to it). You create a variable and give it a value like this:
+
+```csharp
         int port = 4444;
+        string targetIP = "192.168.10.200";
+```
 
-        // String: text
-        string targetIP = "192.168.10.100";
+`int` means this variable holds a whole number (no decimal point). `port` is the name you chose for it. `4444` is the value stored in it. `string` means this variable holds text. `targetIP` holds the text "192.168.10.200". The text has to be inside double quotes so C# knows it is text and not code.
 
-        // Boolean: true or false
-        bool connected = false;
+You can print variables by combining them with text:
 
-        // Byte: a single byte (0 to 255)
-        byte xorKey = 0x4A;
+```csharp
+        Console.WriteLine("Connecting to " + targetIP + " on port " + port);
+```
 
-        // Long: large whole numbers (for memory addresses)
-        long memoryAddress = 0x7FFE0000;
+The `+` sign joins pieces of text together. When you join a number with text, C# automatically converts the number to text for you. This line prints: `Connecting to 192.168.10.200 on port 4444`
 
-        Console.WriteLine("Target: " + targetIP + ":" + port);
-        Console.WriteLine("XOR key: 0x" + xorKey.ToString("X2"));
-        Console.WriteLine("Memory address: 0x" + memoryAddress.ToString("X"));
-        Console.WriteLine("Connected: " + connected);
+Here are the variable types you will use in the loaders:
+
+```csharp
+        int processId = 1234;
+        uint memorySize = 4096;
+        byte singleByte = 0xFF;
+        bool success = true;
+        long bigNumber = 0x7FFE00000000;
+```
+
+`int` holds whole numbers. You use it for process IDs, port numbers, and return values from functions. `uint` is the same but only holds positive numbers (no negatives). Windows functions use `uint` for things like memory sizes and permission flags. `byte` holds a single byte, which is a number from 0 to 255. This is the building block of all raw data, and you will work with lots of bytes because shellcode is just a sequence of bytes. `bool` holds either `true` or `false`, nothing else. You use it to check if something worked or failed. `long` holds very large numbers. You need it for 64-bit memory addresses on modern Windows.
+
+The `0x` prefix means the number is written in hexadecimal (base 16) instead of decimal (base 10). Hexadecimal is used everywhere in Windows programming. The number `0xFF` is the same as 255 in decimal. The number `0x4A` is the same as 74. You do not need to memorize conversions because C# handles them, but you need to recognize that `0x` means hex.
+
+Here is the complete program:
+
+```csharp
+using System;
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        int port = 4444;
+        string targetIP = "192.168.10.200";
+        byte singleByte = 0xFF;
+        bool success = true;
+
+        Console.WriteLine("Connecting to " + targetIP + " on port " + port);
+        Console.WriteLine("Byte value: " + singleByte);
+        Console.WriteLine("Success: " + success);
     }
 }
-```
-
-Run it:
-
-```
-dotnet run
 ```
 
 Output:
 ```
-Target: 192.168.10.100:4444
-XOR key: 0x4A
-Memory address: 0x7FFE0000
-Connected: False
+Connecting to 192.168.10.200 on port 4444
+Byte value: 255
+Success: True
 ```
 
-The types that matter for evasion development:
+Notice that when you print the byte `0xFF`, it shows as `255`. That is because C# converts it to decimal for display. Later you will learn to display it as hex when you need to.
 
-- **int** holds whole numbers from -2,147,483,648 to 2,147,483,647. You use this for process IDs, port numbers, loop counters, and return codes from Windows API functions.
-- **uint** holds unsigned (non-negative) whole numbers from 0 to 4,294,967,295. Windows API functions use uint for flags like memory protection values (PAGE_READWRITE = 0x04, PAGE_EXECUTE_READ = 0x20) and allocation types (MEM_COMMIT = 0x1000).
-- **byte** holds a single byte from 0 to 255. Shellcode is an array of bytes. XOR keys are bytes. Every piece of raw data you work with is bytes.
-- **string** holds text. You use strings for IP addresses, process names, file paths, and function names. Strings in C# are stored in the binary's metadata in clear text, which is why the loaders build sensitive strings from integer arithmetic instead of writing them directly.
-- **bool** holds true or false. You use this for checking whether API calls succeeded.
-- **IntPtr** holds a pointer (a memory address). On a 64-bit system, IntPtr is 8 bytes. Every Windows API function that returns a handle (a reference to an operating system resource) returns an IntPtr. When you call VirtualAlloc and it returns the address of the allocated memory, that address is an IntPtr.
-- **long** holds large whole numbers. You sometimes need this for 64-bit values.
+### Part 3: Making Decisions with If Statements
 
-The `0x` prefix means the number is in hexadecimal (base 16). Hexadecimal is everywhere in Windows programming because memory addresses, byte values, and API constants are all written in hex. Each hex digit represents 4 bits, so two hex digits represent one byte. `0x4A` is the byte value 74 in decimal, and `0x7FFE0000` is a memory address.
+Your program needs to make decisions. Did the file load successfully? Did the memory allocation work? Is the user running the program with the right arguments? You handle all of this with `if` statements.
 
-The `.ToString("X2")` call converts a number to its hexadecimal string representation. "X2" means uppercase hex with at least 2 digits (so 10 becomes "0A", not "A"). "X" without a number uses the minimum digits needed.
+```csharp
+        int result = 0;
 
-### Byte Arrays
+        if (result == 0)
+        {
+            Console.WriteLine("[+] Operation succeeded.");
+        }
+```
 
-Shellcode is a sequence of bytes. In C#, you store a sequence of bytes in a byte array. Understanding byte arrays is the single most important data structure for this entire curriculum because every loader reads, manipulates, or writes byte arrays.
+The `if` statement checks a condition. The condition is inside the parentheses: `result == 0`. The double equals `==` means "is equal to" (a single `=` means "assign a value", which is different). If the condition is true, the code inside the curly braces runs. If the condition is false, the code is skipped entirely.
+
+You can add an `else` block for what happens when the condition is false:
+
+```csharp
+        if (result == 0)
+        {
+            Console.WriteLine("[+] Operation succeeded.");
+        }
+        else
+        {
+            Console.WriteLine("[-] Operation failed.");
+        }
+```
+
+If `result` is 0, you see the success message. If `result` is anything other than 0, you see the failure message. Only one of the two blocks runs, never both.
+
+In the loaders, you see this pattern after every Windows function call. Windows functions return a value that tells you whether they worked. Typically, 0 means success and anything else means failure. Or the function returns a memory address, and if it returns 0 (a null address), it means it failed. The loader checks the return value and exits if something went wrong:
+
+```csharp
+        IntPtr memoryAddress = IntPtr.Zero;
+
+        if (memoryAddress == IntPtr.Zero)
+        {
+            Console.WriteLine("[-] Memory allocation failed.");
+            return;
+        }
+```
+
+`IntPtr` is a special type that holds a memory address. `IntPtr.Zero` is the null address (address 0), which Windows returns when a function fails. The `return;` statement stops the program immediately. There is no point continuing if the memory allocation failed because everything after it depends on having that memory.
+
+The `[+]` and `[-]` prefixes in the messages are a convention in security tools. `[+]` means something worked, `[-]` means something failed, `[*]` means general information. You will see this throughout the loaders.
+
+Here is a complete example:
 
 ```csharp
 using System;
@@ -190,122 +238,562 @@ class Program
 {
     static void Main(string[] args)
     {
-        // A byte array with explicit values.
-        // These are the first few bytes of a NOP sled (0x90 = NOP instruction).
-        byte[] nopSled = new byte[] { 0x90, 0x90, 0x90, 0x90, 0x90 };
+        int status = 0;
 
-        // An empty byte array of a specific size.
-        // This is how you create a buffer to hold data you will read later.
-        byte[] buffer = new byte[256];
-
-        // The length of the array (number of bytes).
-        Console.WriteLine("NOP sled length: " + nopSled.Length + " bytes");
-        Console.WriteLine("Buffer length: " + buffer.Length + " bytes");
-
-        // Accessing individual bytes by index (starting from 0).
-        Console.WriteLine("First byte: 0x" + nopSled[0].ToString("X2"));
-        Console.WriteLine("Last byte: 0x" + nopSled[nopSled.Length - 1].ToString("X2"));
-
-        // Printing all bytes as a hex string.
-        // This is how you inspect shellcode or encrypted data.
-        Console.Write("NOP sled hex: ");
-        for (int i = 0; i < nopSled.Length; i++)
+        if (status == 0)
         {
-            Console.Write(nopSled[i].ToString("X2") + " ");
+            Console.WriteLine("[+] Status check passed.");
+        }
+        else
+        {
+            Console.WriteLine("[-] Status check failed with code: " + status);
+            return;
+        }
+
+        Console.WriteLine("[*] Continuing to next step...");
+
+        bool fileLoaded = false;
+
+        if (fileLoaded)
+        {
+            Console.WriteLine("[+] File is loaded.");
+        }
+        else
+        {
+            Console.WriteLine("[-] File not loaded.");
+            return;
+        }
+
+        Console.WriteLine("[*] This line never runs because fileLoaded is false.");
+    }
+}
+```
+
+Output:
+```
+[+] Status check passed.
+[*] Continuing to next step...
+[-] File not loaded.
+```
+
+The program stops after "File not loaded" because `return;` exits Main. The last line never runs. This is exactly how the loaders handle errors: check each step, bail out if it fails, continue if it succeeds.
+
+### Part 4: Loops - Repeating Actions
+
+Imagine you need to print the numbers 1 through 10. You could write 10 separate `Console.WriteLine` calls, one for each number. But that is tedious, and if you needed to print 1 through 10000, writing 10000 lines is insane. A loop does the same action multiple times automatically.
+
+The simplest way to understand a loop: you give it a starting point, a stopping condition, and a step size. It repeats the code inside it, adjusting the step each time, until the stopping condition is met.
+
+```csharp
+        for (int i = 1; i <= 10; i++)
+        {
+            Console.WriteLine(i);
+        }
+```
+
+This prints:
+```
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+```
+
+Here is what the three parts inside the parentheses do:
+
+`int i = 1` creates a counter variable called `i` starting at 1. This happens once, at the beginning.
+
+`i <= 10` is the condition. Before each repetition, C# checks: is `i` still less than or equal to 10? If yes, run the code inside the braces again. If no, stop.
+
+`i++` adds 1 to `i` after each repetition. So `i` goes 1, 2, 3, 4, 5, 6, 7, 8, 9, 10. When `i` becomes 11, the condition `i <= 10` is false, and the loop stops.
+
+Now here is why loops matter for evasion. Shellcode is a sequence of bytes. A typical shellcode payload is 400 to 600 bytes long. If you want to change every byte (for example, to encrypt it), you need to visit each byte one by one and apply an operation to it. A loop does this:
+
+```csharp
+        byte[] data = new byte[] { 10, 20, 30, 40, 50 };
+
+        for (int i = 0; i < data.Length; i++)
+        {
+            Console.WriteLine("Byte " + i + " = " + data[i]);
+        }
+```
+
+This prints:
+```
+Byte 0 = 10
+Byte 1 = 20
+Byte 2 = 30
+Byte 3 = 40
+Byte 4 = 50
+```
+
+`data.Length` gives you the total number of items in the array (5 in this case). The counter starts at 0 because in C#, the first item in an array is at position 0, the second at position 1, and so on. The loop runs while `i < 5`, meaning it runs for i = 0, 1, 2, 3, 4. That is all 5 positions.
+
+When you encrypt shellcode, the loop visits each byte, applies the encryption operation, and stores the result. When you search through a list of running processes, the loop checks each one. When you build a string character by character, the loop adds each character. Loops are in every single loader.
+
+Here is the complete example:
+
+```csharp
+using System;
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        Console.WriteLine("Counting 1 to 10:");
+        for (int i = 1; i <= 10; i++)
+        {
+            Console.WriteLine(i);
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("Walking through a byte array:");
+        byte[] data = new byte[] { 10, 20, 30, 40, 50 };
+
+        for (int i = 0; i < data.Length; i++)
+        {
+            Console.WriteLine("Position " + i + " = " + data[i]);
+        }
+    }
+}
+```
+
+### Part 5: Arrays - Storing Multiple Values Together
+
+A single variable holds one value. But shellcode is hundreds of bytes, a list of running processes has multiple entries, and a function name is a sequence of characters. You need a way to store many values of the same type together. That is what an array does.
+
+```csharp
+        byte[] shellcode = new byte[] { 0xFC, 0x48, 0x83, 0xE4, 0xF0 };
+```
+
+`byte[]` means "an array of bytes". The square brackets `[]` indicate it is an array, not a single value. `new byte[] { 0xFC, 0x48, 0x83, 0xE4, 0xF0 }` creates the array with 5 bytes in it. Those hex values (0xFC, 0x48, etc.) are actual bytes from the beginning of a typical shellcode payload.
+
+You access individual items by their position number (called an index), starting from 0:
+
+```csharp
+        byte first = shellcode[0];
+        byte second = shellcode[1];
+        byte last = shellcode[shellcode.Length - 1];
+```
+
+`shellcode[0]` is the first byte (0xFC). `shellcode[1]` is the second (0x48). `shellcode[shellcode.Length - 1]` is the last byte. Since the array has 5 items and indexing starts at 0, the last index is 4, which is `Length - 1`.
+
+You can also create an empty array of a specific size and fill it later:
+
+```csharp
+        byte[] buffer = new byte[256];
+```
+
+This creates an array with 256 bytes, all set to 0. You would use this when you know how much space you need but do not have the data yet. In the loaders, you create result arrays for holding encrypted or decrypted data.
+
+You can change individual values after creating the array:
+
+```csharp
+        buffer[0] = 0xCC;
+        buffer[1] = 0x90;
+```
+
+Now the first byte of `buffer` is 0xCC and the second is 0x90. The rest are still 0.
+
+Combining arrays with loops is how you process shellcode:
+
+```csharp
+        byte[] data = new byte[] { 0xFC, 0x48, 0x83, 0xE4, 0xF0 };
+
+        Console.Write("Hex dump: ");
+        for (int i = 0; i < data.Length; i++)
+        {
+            Console.Write(data[i].ToString("X2") + " ");
+        }
+        Console.WriteLine();
+```
+
+Output: `Hex dump: FC 48 83 E4 F0`
+
+`.ToString("X2")` converts a byte to its hexadecimal text representation with at least 2 digits. The byte value 252 in decimal becomes "FC" in hex. The byte 72 becomes "48". `Console.Write` (without "Line") prints text without moving to the next line, so all the bytes appear on the same line with spaces between them.
+
+Here is the complete example:
+
+```csharp
+using System;
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        byte[] data = new byte[] { 0xFC, 0x48, 0x83, 0xE4, 0xF0 };
+
+        Console.WriteLine("Array has " + data.Length + " bytes.");
+        Console.WriteLine("First byte: 0x" + data[0].ToString("X2"));
+        Console.WriteLine("Last byte: 0x" + data[data.Length - 1].ToString("X2"));
+
+        Console.Write("All bytes: ");
+        for (int i = 0; i < data.Length; i++)
+        {
+            Console.Write(data[i].ToString("X2") + " ");
         }
         Console.WriteLine();
 
-        // Modifying a byte.
-        buffer[0] = 0xCC;  // 0xCC = INT3, the software breakpoint instruction
-        Console.WriteLine("Buffer[0] after modification: 0x" + buffer[0].ToString("X2"));
+        byte[] buffer = new byte[10];
+        buffer[0] = 0xAA;
+        buffer[1] = 0xBB;
+        Console.WriteLine("Buffer[0]: 0x" + buffer[0].ToString("X2"));
+        Console.WriteLine("Buffer[5]: 0x" + buffer[5].ToString("X2"));
     }
 }
 ```
 
 Output:
 ```
-NOP sled length: 5 bytes
-Buffer length: 256 bytes
-First byte: 0x90
-Last byte: 0x90
-NOP sled hex: 90 90 90 90 90
-Buffer[0] after modification: 0xCC
+Array has 5 bytes.
+First byte: 0xFC
+Last byte: 0xF0
+All bytes: FC 48 83 E4 F0
+Buffer[0]: 0xAA
+Buffer[5]: 0x00
 ```
 
-Key things to understand:
+Buffer[5] is 0x00 because empty arrays are filled with zeros by default.
 
-- `new byte[] { 0x90, 0x90 }` creates a byte array with specific values. You will see this in the AMSI bypass loader where the patch bytes are defined this way.
-- `new byte[256]` creates a byte array of 256 zeros. You will see this when allocating buffers for reading data.
-- `.Length` gives you the number of bytes. Every loader uses this when telling Windows API functions how many bytes to allocate or write.
-- `array[0]` accesses the first byte (arrays start at index 0 in C#). `array[array.Length - 1]` accesses the last byte.
-- Byte arrays are mutable. You can change individual bytes after creation.
+### Part 6: Functions - Reusable Blocks of Code
 
-### The XOR Operation
+As your programs grow, you will have blocks of code that you need to run in multiple places. Instead of writing the same code twice, you put it in a function (C# calls them methods) and call it by name whenever you need it.
 
-XOR (exclusive or) is the encryption mechanism used in Loader 02 and referenced in every loader that handles encrypted shellcode. You need to understand it completely.
+A function has a name, can accept input (called parameters), does some work, and can give back a result (called a return value).
 
-XOR is a bitwise operation. It compares two values bit by bit. For each pair of bits:
-- 0 XOR 0 = 0
-- 0 XOR 1 = 1
-- 1 XOR 0 = 1
-- 1 XOR 1 = 0
+Start with a simple function that takes no input and returns nothing:
 
-The rule is: if the bits are different, the result is 1. If they are the same, the result is 0.
+```csharp
+    static void PrintBanner()
+    {
+        Console.WriteLine("=== Stealth Runner ===");
+        Console.WriteLine("Version 1.0");
+        Console.WriteLine();
+    }
+```
 
-The critical property of XOR is that it is reversible: if you XOR a value with a key, and then XOR the result with the same key, you get the original value back. This means XOR is both the encryption and the decryption operation.
+`static` means this function belongs to the class directly (just use this for now, all our functions are static). `void` means this function does not give back a result. `PrintBanner` is the name you chose. The empty parentheses `()` mean it takes no input. You call it from Main like this:
+
+```csharp
+    static void Main(string[] args)
+    {
+        PrintBanner();
+        Console.WriteLine("Starting operations...");
+    }
+```
+
+When the program reaches `PrintBanner();`, it jumps to the PrintBanner function, runs the code inside it, then comes back to Main and continues with the next line.
+
+Now a function that takes input:
+
+```csharp
+    static void PrintStatus(string message, bool success)
+    {
+        if (success)
+        {
+            Console.WriteLine("[+] " + message);
+        }
+        else
+        {
+            Console.WriteLine("[-] " + message);
+        }
+    }
+```
+
+`string message` and `bool success` are parameters. When you call the function, you provide values for them:
+
+```csharp
+        PrintStatus("Memory allocated.", true);
+        PrintStatus("Thread creation failed.", false);
+```
+
+Output:
+```
+[+] Memory allocated.
+[-] Thread creation failed.
+```
+
+Now a function that returns a result. This is the pattern you will see in every loader for data processing:
+
+```csharp
+    static int AddNumbers(int a, int b)
+    {
+        int result = a + b;
+        return result;
+    }
+```
+
+`int` before the function name (instead of `void`) means this function gives back an integer when it is done. The `return` statement sends the value back to whoever called the function:
+
+```csharp
+        int total = AddNumbers(100, 50);
+        Console.WriteLine("Total: " + total);
+```
+
+Output: `Total: 150`
+
+The function does the work and gives you the answer. You store the answer in a variable and use it.
+
+Here is a real example from the loaders. This function converts a hex string like "4A7F" into a byte array `{0x4A, 0x7F}`. Every loader that accepts a key from the command line uses this exact function:
+
+```csharp
+    static byte[] HexToBytes(string hex)
+    {
+```
+
+The function is called `HexToBytes`. It takes a string as input and returns a byte array.
+
+```csharp
+        byte[] bytes = new byte[hex.Length / 2];
+```
+
+A hex string uses 2 characters per byte ("4A" is one byte, "7F" is one byte). So if the input string is 8 characters long, that is 4 bytes. We create an empty byte array of that size.
+
+```csharp
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            bytes[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
+        }
+```
+
+The loop goes through each byte position. `hex.Substring(i * 2, 2)` extracts 2 characters from the string. When `i` is 0, it grabs characters at positions 0 and 1. When `i` is 1, it grabs positions 2 and 3. And so on. `Convert.ToByte(..., 16)` converts those 2 hex characters into a byte value. The `16` tells C# the characters are in base 16 (hexadecimal).
+
+```csharp
+        return bytes;
+    }
+```
+
+Return the completed byte array to whoever called the function.
+
+Here is the complete program with all the function examples:
 
 ```csharp
 using System;
 
 class Program
 {
+    static void PrintBanner()
+    {
+        Console.WriteLine("=== Function Demo ===");
+        Console.WriteLine();
+    }
+
+    static void PrintStatus(string message, bool success)
+    {
+        if (success)
+            Console.WriteLine("[+] " + message);
+        else
+            Console.WriteLine("[-] " + message);
+    }
+
+    static byte[] HexToBytes(string hex)
+    {
+        byte[] bytes = new byte[hex.Length / 2];
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            bytes[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
+        }
+        return bytes;
+    }
+
     static void Main(string[] args)
     {
-        // Original shellcode byte (just one byte for demonstration).
-        byte original = 0xFC;  // 0xFC is the first byte of many x64 shellcodes (cld instruction)
+        PrintBanner();
 
-        // XOR key byte.
-        byte key = 0x4A;
+        PrintStatus("Program started.", true);
 
-        // Encrypt: XOR the original with the key.
-        byte encrypted = (byte)(original ^ key);
+        string hexInput = "4A7F2B1C";
+        byte[] keyBytes = HexToBytes(hexInput);
 
-        // Decrypt: XOR the encrypted value with the same key.
-        byte decrypted = (byte)(encrypted ^ key);
+        Console.Write("[*] Converted \"" + hexInput + "\" to bytes: ");
+        for (int i = 0; i < keyBytes.Length; i++)
+        {
+            Console.Write("0x" + keyBytes[i].ToString("X2") + " ");
+        }
+        Console.WriteLine();
 
-        Console.WriteLine("Original:  0x" + original.ToString("X2"));
-        Console.WriteLine("Key:       0x" + key.ToString("X2"));
-        Console.WriteLine("Encrypted: 0x" + encrypted.ToString("X2"));
-        Console.WriteLine("Decrypted: 0x" + decrypted.ToString("X2"));
-        Console.WriteLine("Match: " + (original == decrypted));
+        PrintStatus("Conversion complete.", true);
     }
 }
+```
+
+Output:
+```
+=== Function Demo ===
+
+[+] Program started.
+[*] Converted "4A7F2B1C" to bytes: 0x4A 0x7F 0x2B 0x1C
+[+] Conversion complete.
+```
+
+### Part 7: XOR - The Simplest Encryption
+
+Now that you understand variables, arrays, loops, and functions, you are ready for the first concept that directly connects to evasion.
+
+The problem: Defender has a database of byte patterns that belong to known malware. When your shellcode sits in a file on disk, Defender reads the file, compares its bytes against the database, and if there is a match, it blocks the file. So you need a way to change the bytes in the file so Defender does not recognize them, but your loader can change them back when it is time to run the code.
+
+The solution is XOR, which stands for "exclusive or." XOR is an operation you perform on two numbers. For each pair of bits (the individual 0s and 1s that make up a number), XOR gives you 1 if the bits are different and 0 if they are the same.
+
+But you do not need to think about individual bits. The practical thing you need to know is this: if you XOR a number with a key, you get a different number. If you XOR that result with the same key again, you get the original number back. XOR is both the lock and the key.
+
+Let me show you with a single byte first:
+
+```csharp
+        byte original = 0xFC;
+        byte key = 0x4A;
+```
+
+`0xFC` is the first byte of most shellcode payloads. It is the machine instruction `cld` (clear direction flag). Defender knows this byte pattern. `0x4A` is our encryption key, just a number we chose.
+
+```csharp
+        byte encrypted = (byte)(original ^ key);
+```
+
+The `^` symbol is XOR in C#. This takes `0xFC` and XORs it with `0x4A`. The result is `0xB6`, which is a completely different byte that does not match any shellcode signature. The `(byte)` at the beginning is needed because C# internally converts the result to a bigger number type, and we need to tell it we want a byte back.
+
+```csharp
+        byte decrypted = (byte)(encrypted ^ key);
+```
+
+Now XOR the encrypted value `0xB6` with the same key `0x4A` again. The result is `0xFC`, the original value. That is the magic of XOR: apply it once to encrypt, apply it again with the same key to decrypt.
+
+```csharp
+        Console.WriteLine("Original:  0x" + original.ToString("X2"));
+        Console.WriteLine("Encrypted: 0x" + encrypted.ToString("X2"));
+        Console.WriteLine("Decrypted: 0x" + decrypted.ToString("X2"));
 ```
 
 Output:
 ```
 Original:  0xFC
-Key:       0x4A
 Encrypted: 0xB6
 Decrypted: 0xFC
-Match: True
 ```
 
-The `^` operator is XOR in C#. The `(byte)` cast is needed because C# promotes byte operations to int, and you need to cast the result back to byte.
+Now apply this to an entire array of bytes, which is how the loaders encrypt and decrypt shellcode:
 
-0xFC is a real example: it is the first byte of most x64 shellcodes generated by msfvenom. The cld (clear direction flag) instruction starts many payloads. Defender's signatures know this. When you XOR 0xFC with 0x4A, you get 0xB6, which does not match any known shellcode signature. That is how XOR encoding defeats static signature scanning.
+```csharp
+        byte[] shellcode = new byte[] { 0xFC, 0x48, 0x83, 0xE4, 0xF0 };
+        byte xorKey = 0x4A;
 
-Now here is XOR applied to an entire byte array, which is exactly how the loaders encrypt and decrypt shellcode:
+        byte[] encrypted_data = new byte[shellcode.Length];
+```
+
+We have the shellcode bytes and a key. We create an empty array the same size as the shellcode to hold the encrypted version.
+
+```csharp
+        for (int i = 0; i < shellcode.Length; i++)
+        {
+            encrypted_data[i] = (byte)(shellcode[i] ^ xorKey);
+        }
+```
+
+The loop visits each byte in the shellcode array, XORs it with the key, and stores the result in the encrypted array. After this loop, `encrypted_data` contains bytes that look nothing like the original shellcode. Defender will not recognize them.
+
+To decrypt, run the exact same loop on the encrypted data:
+
+```csharp
+        byte[] decrypted_data = new byte[encrypted_data.Length];
+        for (int i = 0; i < encrypted_data.Length; i++)
+        {
+            decrypted_data[i] = (byte)(encrypted_data[i] ^ xorKey);
+        }
+```
+
+Same operation, same key. The decrypted data matches the original shellcode.
+
+Here is the complete program:
 
 ```csharp
 using System;
 
 class Program
 {
-    // This function XORs every byte of the data array with the key array.
-    // It cycles through the key bytes: data[0] ^ key[0], data[1] ^ key[1],
-    // data[2] ^ key[2], data[3] ^ key[0], data[4] ^ key[1], and so on.
-    // This is the exact function used in Loaders 02 through 08.
+    static void Main(string[] args)
+    {
+        byte[] shellcode = new byte[] { 0xFC, 0x48, 0x83, 0xE4, 0xF0 };
+        byte xorKey = 0x4A;
+
+        Console.Write("Original:  ");
+        for (int i = 0; i < shellcode.Length; i++)
+            Console.Write(shellcode[i].ToString("X2") + " ");
+        Console.WriteLine();
+
+        byte[] encrypted_data = new byte[shellcode.Length];
+        for (int i = 0; i < shellcode.Length; i++)
+            encrypted_data[i] = (byte)(shellcode[i] ^ xorKey);
+
+        Console.Write("Encrypted: ");
+        for (int i = 0; i < encrypted_data.Length; i++)
+            Console.Write(encrypted_data[i].ToString("X2") + " ");
+        Console.WriteLine();
+
+        byte[] decrypted_data = new byte[encrypted_data.Length];
+        for (int i = 0; i < encrypted_data.Length; i++)
+            decrypted_data[i] = (byte)(encrypted_data[i] ^ xorKey);
+
+        Console.Write("Decrypted: ");
+        for (int i = 0; i < decrypted_data.Length; i++)
+            Console.Write(decrypted_data[i].ToString("X2") + " ");
+        Console.WriteLine();
+    }
+}
+```
+
+Output:
+```
+Original:  FC 48 83 E4 F0
+Encrypted: B6 02 C9 AE BA
+Decrypted: FC 48 83 E4 F0
+```
+
+The encrypted bytes (B6 02 C9 AE BA) are completely different from the original (FC 48 83 E4 F0). Defender has no signature for B6 02 C9 AE BA because it is not real shellcode, it is encrypted data. When the loader runs, it decrypts the data in memory and then executes it. Defender's file scanner only sees the encrypted version on disk.
+
+### Part 8: Multi-Byte XOR Keys
+
+Using a single byte as the key (like 0x4A) is simple but weak. If someone figures out the key, they can decrypt your shellcode. A multi-byte key (like 4 or 16 bytes) is much stronger and is what the loaders actually use.
+
+With a multi-byte key, you cycle through the key bytes. The first byte of data is XORed with the first byte of the key, the second byte with the second key byte, and so on. When you reach the end of the key, you start over from the beginning.
+
+```csharp
+    static byte[] TransformData(byte[] data, byte[] key)
+    {
+        byte[] result = new byte[data.Length];
+```
+
+The function takes two byte arrays: the data to encrypt/decrypt, and the key. It creates a result array the same size as the data.
+
+```csharp
+        for (int i = 0; i < data.Length; i++)
+        {
+            result[i] = (byte)(data[i] ^ key[i % key.Length]);
+        }
+```
+
+`i % key.Length` is the key part. The `%` operator gives you the remainder after division. If the key is 4 bytes long, then `0 % 4 = 0`, `1 % 4 = 1`, `2 % 4 = 2`, `3 % 4 = 3`, `4 % 4 = 0`, `5 % 4 = 1`, and so on. It cycles through positions 0, 1, 2, 3, 0, 1, 2, 3 forever. This means the key repeats over the entire data, no matter how long the data is.
+
+```csharp
+        return result;
+    }
+```
+
+Return the encrypted (or decrypted) result.
+
+This function is called `TransformData` in the loaders, not `XorEncrypt` or `XorDecrypt`, because Defender's scanner flags binaries that contain method names with "Xor" or "Encrypt" in them. The function works the same regardless of what you name it. Using a neutral name is one of the simplest evasion techniques.
+
+Here is the complete program:
+
+```csharp
+using System;
+
+class Program
+{
     static byte[] TransformData(byte[] data, byte[] key)
     {
         byte[] result = new byte[data.Length];
@@ -316,36 +804,26 @@ class Program
         return result;
     }
 
-    static void Main(string[] args)
+    static void PrintHex(string label, byte[] data)
     {
-        // Simulated shellcode (first 8 bytes of a typical x64 reverse shell).
-        byte[] shellcode = new byte[] { 0xFC, 0x48, 0x83, 0xE4, 0xF0, 0xE8, 0xCC, 0x00 };
-
-        // XOR key (4 bytes, will cycle over the shellcode).
-        byte[] key = new byte[] { 0x4A, 0x7F, 0x2B, 0x1C };
-
-        // Encrypt.
-        byte[] encrypted = TransformData(shellcode, key);
-
-        // Decrypt (same function, same key).
-        byte[] decrypted = TransformData(encrypted, key);
-
-        // Display all three.
-        Console.Write("Original:  ");
-        PrintHex(shellcode);
-        Console.Write("Encrypted: ");
-        PrintHex(encrypted);
-        Console.Write("Decrypted: ");
-        PrintHex(decrypted);
+        Console.Write(label);
+        for (int i = 0; i < data.Length; i++)
+            Console.Write(data[i].ToString("X2") + " ");
+        Console.WriteLine();
     }
 
-    static void PrintHex(byte[] data)
+    static void Main(string[] args)
     {
-        for (int i = 0; i < data.Length; i++)
-        {
-            Console.Write(data[i].ToString("X2") + " ");
-        }
-        Console.WriteLine();
+        byte[] shellcode = new byte[] { 0xFC, 0x48, 0x83, 0xE4, 0xF0, 0xE8, 0xCC, 0x00 };
+        byte[] key = new byte[] { 0x4A, 0x7F, 0x2B, 0x1C };
+
+        PrintHex("Original:  ", shellcode);
+
+        byte[] encrypted = TransformData(shellcode, key);
+        PrintHex("Encrypted: ", encrypted);
+
+        byte[] decrypted = TransformData(encrypted, key);
+        PrintHex("Decrypted: ", decrypted);
     }
 }
 ```
@@ -357,25 +835,176 @@ Encrypted: B6 37 A8 F8 BA 97 E7 1C
 Decrypted: FC 48 83 E4 F0 E8 CC 00
 ```
 
-The `%` operator is modulo (remainder after division). `i % key.Length` cycles through the key: when i is 0,1,2,3 you get key[0],key[1],key[2],key[3], when i is 4 you get key[0] again (because 4 % 4 = 0). This means a 4-byte key can encrypt shellcode of any length by repeating the key over and over.
+The key `{0x4A, 0x7F, 0x2B, 0x1C}` is 4 bytes. It encrypts 8 bytes of shellcode by cycling through twice. The encrypted output is completely different from the original. Decrypting with the same key and same function gives back the original.
 
-This `TransformData` function is the exact function you will see in every loader that handles encrypted shellcode. It is called `TransformData` instead of `XorDecrypt` because Defender's scanners flag method names containing "Xor" or "Decrypt" as suspicious.
+### Part 9: Reading and Writing Files
 
-### Functions (Methods)
+Every loader reads a file from disk. The shellcode (encrypted or not) lives in a binary file, and the loader reads it into a byte array. C# makes this simple with two functions.
 
-A function (called a method in C#) is a named block of code that does a specific task. You call the function by name, and it runs its code and optionally returns a result. Functions let you write code once and use it in multiple places.
+```csharp
+using System.IO;
+```
 
-Every loader is organized into functions: one function for XOR decryption, one function for patching a system function, one function for the main execution logic. Understanding how to write and call functions is essential.
+First, add `System.IO` at the top of your file. IO stands for Input/Output and contains file operations.
+
+```csharp
+        byte[] testData = new byte[] { 0xFC, 0x48, 0x83, 0xE4, 0xF0 };
+        File.WriteAllBytes("test.bin", testData);
+```
+
+`File.WriteAllBytes` takes a file path and a byte array, and writes the bytes to a file. If the file does not exist, it creates it. If it exists, it overwrites it. After this line, there is a file called test.bin on disk containing those 5 bytes.
+
+```csharp
+        byte[] loaded = File.ReadAllBytes("test.bin");
+```
+
+`File.ReadAllBytes` reads the entire file into a byte array. After this line, `loaded` contains the same 5 bytes that were written to the file. This is the main way every loader gets shellcode from disk into memory.
+
+```csharp
+        Console.WriteLine("Wrote " + testData.Length + " bytes to file.");
+        Console.WriteLine("Read " + loaded.Length + " bytes from file.");
+```
+
+You can check that the number of bytes matches.
+
+In the real loaders, the file path comes from the command line, not hardcoded:
+
+```csharp
+        if (args.Length < 1)
+        {
+            Console.WriteLine("Usage: loader.exe <data.bin>");
+            return;
+        }
+
+        string filePath = args[0];
+```
+
+`args` is the array of command-line arguments. `args[0]` is the first argument. When you run `loader.exe encrypted.bin`, `args[0]` is "encrypted.bin". The `if` check makes sure the user actually provided an argument before trying to use it.
+
+You can also check if the file exists before trying to read it:
+
+```csharp
+        if (!File.Exists(filePath))
+        {
+            Console.WriteLine("[-] File not found: " + filePath);
+            return;
+        }
+
+        byte[] fileData = File.ReadAllBytes(filePath);
+        Console.WriteLine("[+] Loaded " + fileData.Length + " bytes from " + filePath);
+```
+
+`File.Exists` returns true if the file is there, false if it is not. The `!` before it means "not", so `!File.Exists(filePath)` means "if the file does NOT exist."
+
+Here is the complete program:
+
+```csharp
+using System;
+using System.IO;
+
+class Program
+{
+    static void Main(string[] args)
+    {
+        byte[] testData = new byte[] { 0xFC, 0x48, 0x83, 0xE4, 0xF0 };
+        string testFile = "test.bin";
+
+        File.WriteAllBytes(testFile, testData);
+        Console.WriteLine("[+] Wrote " + testData.Length + " bytes to " + testFile);
+
+        byte[] loaded = File.ReadAllBytes(testFile);
+        Console.WriteLine("[+] Read " + loaded.Length + " bytes from " + testFile);
+
+        Console.Write("[*] Contents: ");
+        for (int i = 0; i < loaded.Length; i++)
+            Console.Write(loaded[i].ToString("X2") + " ");
+        Console.WriteLine();
+
+        File.Delete(testFile);
+        Console.WriteLine("[+] Test file cleaned up.");
+    }
+}
+```
+
+Output:
+```
+[+] Wrote 5 bytes to test.bin
+[+] Read 5 bytes from test.bin
+[*] Contents: FC 48 83 E4 F0
+[+] Test file cleaned up.
+```
+
+### Part 10: Command-Line Arguments
+
+Every loader accepts input from the command line: the shellcode file path, the encryption key, sometimes a target process name. This way, the same compiled binary works with any payload and any key without changing the source code.
+
+```csharp
+    static void Main(string[] args)
+    {
+```
+
+`args` is an array of strings. Every word you type after the program name becomes one entry in this array:
+
+```csharp
+        Console.WriteLine("Number of arguments: " + args.Length);
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            Console.WriteLine("args[" + i + "] = " + args[i]);
+        }
+```
+
+If you run: `dotnet run -- encrypted.bin 4A7F2B1C explorer`
+
+Output:
+```
+Number of arguments: 3
+args[0] = encrypted.bin
+args[1] = 4A7F2B1C
+args[2] = explorer
+```
+
+The `--` when using `dotnet run` separates dotnet's own arguments from your program's arguments. Everything after `--` goes into `args`.
+
+The loaders check how many arguments were provided and show usage instructions if something is missing:
+
+```csharp
+        if (args.Length < 2)
+        {
+            Console.WriteLine("Usage: loader.exe <data.bin> <key_hex> [target]");
+            Console.WriteLine("  data.bin:  encrypted data file");
+            Console.WriteLine("  key_hex:   decryption key in hex");
+            Console.WriteLine("  target:    optional target process");
+            return;
+        }
+
+        string filePath = args[0];
+        string keyHex = args[1];
+```
+
+The third argument is optional. The loaders handle optional arguments with a conditional expression:
+
+```csharp
+        string target = args.Length >= 3 ? args[2] : "explorer";
+```
+
+This reads as: if args has at least 3 elements, use `args[2]` as the target, otherwise use "explorer" as the default. The `?` and `:` are the ternary operator, which is a compact if/else on a single line.
+
+Since command-line arguments are always strings, you need to convert them when you need a different type. To convert a string to an integer:
+
+```csharp
+        int port = int.Parse(args[1]);
+```
+
+`int.Parse` converts the string "4444" to the number 4444. If the string is not a valid number, this crashes, but for our loaders the inputs are always correct because you control what you type.
+
+Here is the complete program:
 
 ```csharp
 using System;
 
 class Program
 {
-    // A function that converts a hex string to a byte array.
-    // This is used in every loader that accepts a XOR key from the command line.
-    // The command-line key is a hex string like "4A7F2B1C" and this function
-    // converts it to the byte array {0x4A, 0x7F, 0x2B, 0x1C}.
     static byte[] HexToBytes(string hex)
     {
         byte[] bytes = new byte[hex.Length / 2];
@@ -386,303 +1015,93 @@ class Program
         return bytes;
     }
 
-    // A function that converts a byte array to a hex string.
-    // Useful for displaying shellcode or encrypted data.
-    static string BytesToHex(byte[] data)
-    {
-        string result = "";
-        for (int i = 0; i < data.Length; i++)
-        {
-            result += data[i].ToString("X2");
-        }
-        return result;
-    }
-
     static void Main(string[] args)
     {
-        string hexKey = "4A7F2B1C";
-
-        // Call HexToBytes to convert the string to bytes.
-        byte[] keyBytes = HexToBytes(hexKey);
-
-        Console.WriteLine("Input hex string: " + hexKey);
-        Console.Write("Converted bytes:  ");
-        for (int i = 0; i < keyBytes.Length; i++)
-        {
-            Console.Write("0x" + keyBytes[i].ToString("X2") + " ");
-        }
-        Console.WriteLine();
-
-        // Call BytesToHex to convert back.
-        string reconverted = BytesToHex(keyBytes);
-        Console.WriteLine("Back to hex:      " + reconverted);
-    }
-}
-```
-
-Output:
-```
-Input hex string: 4A7F2B1C
-Converted bytes:  0x4A 0x7F 0x2B 0x1C
-Back to hex:      4A7F2B1C
-```
-
-Breaking down the function syntax:
-
-```csharp
-static byte[] HexToBytes(string hex)
-```
-
-- `static` means this function belongs to the class, not to an instance. All functions in our loaders are static.
-- `byte[]` is the return type. This function returns a byte array.
-- `HexToBytes` is the function name.
-- `string hex` is the parameter. When you call the function, you pass a string, and inside the function it is referred to as `hex`.
-
-The `Convert.ToByte(hex.Substring(i * 2, 2), 16)` line is doing three things:
-1. `hex.Substring(i * 2, 2)` extracts 2 characters from the hex string starting at position `i * 2`. For "4A7F2B1C", when i=0 you get "4A", when i=1 you get "7F", when i=2 you get "2B", when i=3 you get "1C".
-2. `Convert.ToByte(..., 16)` converts the 2-character hex string to a byte value. The 16 means "parse this as base 16 (hexadecimal)".
-3. The result is stored in `bytes[i]`.
-
-This `HexToBytes` function appears in every loader that accepts a XOR key from the command line. When you run `loader.exe encrypted.bin 4A7F2B1C`, the "4A7F2B1C" argument is a string. The loader calls HexToBytes to convert it into the byte array needed for XOR decryption.
-
-### Reading Files as Bytes
-
-Every loader reads a file from disk (the shellcode file or encrypted shellcode file) and loads it into a byte array. This is one of the most fundamental operations.
-
-```csharp
-using System;
-using System.IO;
-
-class Program
-{
-    static void Main(string[] args)
-    {
-        // Create a test file with known bytes.
-        string testFile = "test_payload.bin";
-        byte[] testData = new byte[] { 0xFC, 0x48, 0x83, 0xE4, 0xF0, 0xE8, 0xCC, 0x00 };
-        File.WriteAllBytes(testFile, testData);
-        Console.WriteLine("Wrote " + testData.Length + " bytes to " + testFile);
-
-        // Read the file back into a byte array.
-        // This is how every loader reads shellcode from disk.
-        byte[] fileData = File.ReadAllBytes(testFile);
-        Console.WriteLine("Read " + fileData.Length + " bytes from " + testFile);
-
-        // Verify the bytes match.
-        Console.Write("Contents: ");
-        for (int i = 0; i < fileData.Length; i++)
-        {
-            Console.Write(fileData[i].ToString("X2") + " ");
-        }
-        Console.WriteLine();
-
-        // Clean up.
-        File.Delete(testFile);
-        Console.WriteLine("Test file deleted.");
-    }
-}
-```
-
-Output:
-```
-Wrote 8 bytes to test_payload.bin
-Read 8 bytes from test_payload.bin
-Contents: FC 48 83 E4 F0 E8 CC 00
-Test file deleted.
-```
-
-`using System.IO;` imports the input/output namespace, which contains `File`. `File.ReadAllBytes(path)` reads the entire file into a byte array. `File.WriteAllBytes(path, bytes)` writes a byte array to a file. These are the only file operations the loaders use.
-
-In a real loader, the shellcode file path comes from command-line arguments:
-
-```csharp
-static void Main(string[] args)
-{
-    if (args.Length < 1)
-    {
-        Console.WriteLine("Usage: loader.exe <data.bin>");
-        return;
-    }
-
-    string filePath = args[0];
-    byte[] data = File.ReadAllBytes(filePath);
-    Console.WriteLine("Loaded " + data.Length + " bytes from " + filePath);
-}
-```
-
-`args[0]` is the first command-line argument. When you run `loader.exe encrypted.bin`, args[0] is "encrypted.bin". The `if (args.Length < 1)` check prevents the program from crashing if you forget to provide the argument.
-
-### Command-Line Arguments
-
-Every loader accepts command-line arguments for the shellcode file path, XOR key, target process name, and other parameters. This is how the loaders are parameterized so they work with any payload, any key, and any target without changing the source code.
-
-```csharp
-using System;
-
-class Program
-{
-    static void Main(string[] args)
-    {
-        // args is an array of strings containing everything after the program name.
-        // If you run: program.exe 192.168.10.200 4444 explorer
-        // Then: args[0] = "192.168.10.200"
-        //       args[1] = "4444"
-        //       args[2] = "explorer"
-        //       args.Length = 3
-
         if (args.Length < 2)
         {
-            Console.WriteLine("Usage: program.exe <ip> <port> [process_name]");
+            Console.WriteLine("Usage: program.exe <file> <key_hex> [target]");
             return;
         }
 
-        string ip = args[0];
-        int port = int.Parse(args[1]);
+        string filePath = args[0];
+        string keyHex = args[1];
+        string target = args.Length >= 3 ? args[2] : "explorer";
 
-        // The third argument is optional.
-        string processName = args.Length >= 3 ? args[2] : "explorer";
+        Console.WriteLine("[*] File:   " + filePath);
+        Console.WriteLine("[*] Key:    " + keyHex);
+        Console.WriteLine("[*] Target: " + target);
 
-        Console.WriteLine("IP: " + ip);
-        Console.WriteLine("Port: " + port);
-        Console.WriteLine("Target process: " + processName);
-    }
-}
-```
-
-The `args.Length >= 3 ? args[2] : "explorer"` line is a ternary operator. It reads as: "if args has at least 3 elements, use args[2], otherwise use the default value explorer." This is how loaders handle optional parameters.
-
-`int.Parse(args[1])` converts the string "4444" into the integer 4444. Command-line arguments are always strings, so you need to parse them into the correct type.
-
-### Loops
-
-Loops repeat a block of code multiple times. The `for` loop is the one you will use most in the loaders, primarily for iterating over byte arrays.
-
-```csharp
-using System;
-
-class Program
-{
-    static void Main(string[] args)
-    {
-        byte[] data = new byte[] { 0xFC, 0x48, 0x83, 0xE4, 0xF0 };
-        byte key = 0x4A;
-
-        // XOR each byte with the key.
-        // This is the core of every XOR encryption/decryption loop in the loaders.
-        for (int i = 0; i < data.Length; i++)
-        {
-            data[i] = (byte)(data[i] ^ key);
-        }
-
-        Console.Write("After XOR: ");
-        for (int i = 0; i < data.Length; i++)
-        {
-            Console.Write(data[i].ToString("X2") + " ");
-        }
+        byte[] key = HexToBytes(keyHex);
+        Console.Write("[+] Key bytes: ");
+        for (int i = 0; i < key.Length; i++)
+            Console.Write("0x" + key[i].ToString("X2") + " ");
         Console.WriteLine();
     }
 }
 ```
 
-The `for` loop has three parts separated by semicolons:
-1. `int i = 0` - initialization: create a counter starting at 0
-2. `i < data.Length` - condition: keep looping as long as i is less than the array length
-3. `i++` - increment: add 1 to i after each iteration
-
-So the loop runs with i = 0, 1, 2, 3, 4 and stops when i reaches 5 (the array length). This visits every byte in the array exactly once.
-
-### If Statements and Error Checking
-
-Every Windows API call can fail. The loaders check the return value of each call and handle failures. If VirtualAlloc fails to allocate memory, it returns IntPtr.Zero (a null pointer). If OpenProcess fails to open a process handle, it also returns IntPtr.Zero. If a function returns an int status code, 0 usually means success and anything else means failure.
-
-```csharp
-using System;
-
-class Program
-{
-    // Simulating an API call that might fail.
-    static IntPtr SimulateVirtualAlloc(bool succeed)
-    {
-        if (succeed)
-            return new IntPtr(0x7FFE0000);  // Simulated memory address
-        else
-            return IntPtr.Zero;  // Failure
-    }
-
-    static void Main(string[] args)
-    {
-        // Successful allocation.
-        IntPtr memory = SimulateVirtualAlloc(true);
-        if (memory == IntPtr.Zero)
-        {
-            Console.WriteLine("[-] Allocation failed.");
-            return;  // Exit the program
-        }
-        Console.WriteLine("[+] Memory allocated at: 0x" + memory.ToString("X"));
-
-        // Failed allocation.
-        IntPtr memory2 = SimulateVirtualAlloc(false);
-        if (memory2 == IntPtr.Zero)
-        {
-            Console.WriteLine("[-] Second allocation failed.");
-            return;
-        }
-    }
-}
-```
+Run: `dotnet run -- payload.bin 4A7F2B1C svchost`
 
 Output:
 ```
-[+] Memory allocated at: 0x7FFE0000
-[-] Second allocation failed.
+[*] File:   payload.bin
+[*] Key:    4A7F2B1C
+[*] Target: svchost
+[+] Key bytes: 0x4A 0x7F 0x2B 0x1C
 ```
 
-The pattern `if (result == IntPtr.Zero) { error handling; return; }` appears after every API call in every loader. It is the standard way to handle Windows API errors in C#. The `return` statement exits the current function (or the entire program if you are in Main).
+### Part 11: The Marshal Class - Bridging C# and Raw Memory
 
-The `[+]` and `[-]` prefixes in Console.WriteLine messages are a convention in security tools: `[+]` means success, `[-]` means failure, `[*]` means informational. You will see this throughout the loaders.
+This is the last concept before we move to Windows API calls in Document 03. It is slightly more advanced but it is critical for understanding what the loaders do.
 
-### The Unsafe Keyword and Pointers
-
-C# is normally a "safe" language that manages memory for you. But evasion development requires direct memory manipulation, which needs "unsafe" code. The `unsafe` keyword tells the compiler that you are going to work with raw memory pointers.
-
-You will not write unsafe code directly in most loaders because the `Marshal` class (covered next) provides safe wrappers around unsafe operations. But you need to understand what unsafe means because the loader projects compile with `AllowUnsafeBlocks` enabled, and some operations in the direct syscalls loader use unsafe code.
+C# normally manages memory for you. You create a byte array, C# finds space for it, and when you are done, C# cleans it up. But Windows API functions work with raw memory addresses, not C# arrays. You need a bridge between the C# world and the raw memory world. That bridge is the `Marshal` class.
 
 ```csharp
-using System;
-
-class Program
-{
-    static unsafe void Main(string[] args)
-    {
-        // Allocate a byte array normally.
-        byte[] data = new byte[] { 0x41, 0x42, 0x43, 0x44 };  // "ABCD" in ASCII
-
-        // Pin the array in memory so the garbage collector does not move it.
-        // "fixed" pins the array and gives you a pointer to its first byte.
-        fixed (byte* ptr = data)
-        {
-            // ptr is now a raw pointer to the first byte of the array.
-            Console.WriteLine("Address of data: 0x" + ((long)ptr).ToString("X"));
-            Console.WriteLine("First byte: 0x" + (*ptr).ToString("X2"));
-            Console.WriteLine("Second byte: 0x" + (*(ptr + 1)).ToString("X2"));
-
-            // Modify a byte through the pointer.
-            *(ptr + 2) = 0x58;  // Change 'C' to 'X'
-        }
-
-        // The array was modified through the pointer.
-        Console.WriteLine("Modified data[2]: 0x" + data[2].ToString("X2"));
-    }
-}
+using System.Runtime.InteropServices;
 ```
 
-To compile this, you need to enable unsafe blocks. In the .csproj file, add `<AllowUnsafeBlocks>true</AllowUnsafeBlocks>` in the PropertyGroup. The build script for the loaders already does this.
+Add this at the top. The `Marshal` class lives in this namespace.
 
-In evasion development, you use pointers when you need to pass memory addresses to Windows API functions or when you need to read/write specific bytes at specific memory locations. The `Marshal` class provides a safer way to do most of this, but understanding that pointers exist and what they do helps you understand code that uses them.
+The most important Marshal function for the loaders is `Marshal.Copy`. It copies bytes from a C# byte array to a raw memory address:
 
-### Marshal: The Bridge Between C# and Native Memory
+```csharp
+        byte[] data = new byte[] { 0xFC, 0x48, 0x83, 0xE4, 0xF0 };
 
-The `System.Runtime.InteropServices.Marshal` class is the most important class for evasion development in C#. It provides functions that let you copy data between managed memory (C# byte arrays) and unmanaged memory (raw memory addresses that Windows API functions work with).
+        IntPtr memory = Marshal.AllocHGlobal(data.Length);
+```
+
+`Marshal.AllocHGlobal` allocates a block of raw (unmanaged) memory and returns its address as an `IntPtr`. This is similar to what VirtualAlloc does in the loaders, but simpler. The address is a number that tells the computer exactly where in its memory the block starts.
+
+```csharp
+        Marshal.Copy(data, 0, memory, data.Length);
+```
+
+`Marshal.Copy` takes 4 arguments: the source byte array, the starting position in the array (0 means start from the beginning), the destination memory address, and how many bytes to copy. After this call, the raw memory at address `memory` contains the same bytes as the `data` array.
+
+This is the core operation in every loader. The loader reads shellcode into a byte array, allocates memory using a Windows function, and then copies the shellcode bytes into that memory using Marshal.Copy. The shellcode is now in memory and ready to execute.
+
+After copying, you should clear the original byte array so the shellcode does not sit in two places at once:
+
+```csharp
+        Array.Clear(data, 0, data.Length);
+```
+
+`Array.Clear` sets every byte in the array to 0. This is a security practice. If Defender's memory scanner runs, the shellcode exists only in the allocated memory, not in the C# array.
+
+```csharp
+        byte firstByte = Marshal.ReadByte(memory);
+        Console.WriteLine("First byte at address: 0x" + firstByte.ToString("X2"));
+```
+
+`Marshal.ReadByte` reads a single byte from a raw memory address. This is useful for verifying that the copy worked.
+
+```csharp
+        Marshal.FreeHGlobal(memory);
+```
+
+`Marshal.FreeHGlobal` releases the allocated memory. In the loaders, you usually do not free memory because the shellcode needs to keep running in that memory. But for a test like this, you clean up.
+
+Here is the complete program:
 
 ```csharp
 using System;
@@ -690,69 +1109,88 @@ using System.Runtime.InteropServices;
 
 class Program
 {
-    // Simulating VirtualAlloc - in the real loaders, this calls the actual Windows API.
-    // For this example, we use Marshal.AllocHGlobal which allocates unmanaged memory.
     static void Main(string[] args)
     {
-        byte[] data = new byte[] { 0xFC, 0x48, 0x83, 0xE4, 0xF0, 0xE8, 0xCC, 0x00 };
+        byte[] data = new byte[] { 0xFC, 0x48, 0x83, 0xE4, 0xF0 };
+        Console.WriteLine("[*] Data has " + data.Length + " bytes.");
 
-        // Allocate unmanaged memory (this is what VirtualAlloc does, simplified).
-        IntPtr unmanagedMemory = Marshal.AllocHGlobal(data.Length);
-        Console.WriteLine("Allocated " + data.Length + " bytes at: 0x" + unmanagedMemory.ToString("X"));
+        IntPtr memory = Marshal.AllocHGlobal(data.Length);
+        Console.WriteLine("[+] Allocated memory at: 0x" + memory.ToString("X"));
 
-        // Copy bytes from the managed array to unmanaged memory.
-        // This is the equivalent of what every loader does after VirtualAlloc:
-        // copy shellcode from the C# byte array into the allocated memory.
-        Marshal.Copy(data, 0, unmanagedMemory, data.Length);
-        Console.WriteLine("Copied " + data.Length + " bytes to unmanaged memory.");
+        Marshal.Copy(data, 0, memory, data.Length);
+        Console.WriteLine("[+] Copied " + data.Length + " bytes to memory.");
 
-        // Read a byte back from unmanaged memory to verify.
-        byte firstByte = Marshal.ReadByte(unmanagedMemory);
-        Console.WriteLine("First byte at address: 0x" + firstByte.ToString("X2"));
-
-        // Clean up - free the unmanaged memory.
-        Marshal.FreeHGlobal(unmanagedMemory);
-        Console.WriteLine("Memory freed.");
-
-        // Clear the managed array (security practice: do not leave shellcode in memory).
         Array.Clear(data, 0, data.Length);
-        Console.WriteLine("Managed array cleared.");
+        Console.WriteLine("[+] Cleared source array.");
+
+        byte firstByte = Marshal.ReadByte(memory);
+        Console.WriteLine("[*] Byte at memory address: 0x" + firstByte.ToString("X2"));
+
+        Marshal.FreeHGlobal(memory);
+        Console.WriteLine("[+] Memory freed.");
     }
 }
 ```
 
 Output:
 ```
-Allocated 8 bytes at: 0x<some_address>
-Copied 8 bytes to unmanaged memory.
-First byte at address: 0xFC
-Memory freed.
-Managed array cleared.
+[*] Data has 5 bytes.
+[+] Allocated memory at: 0x<some_address>
+[+] Copied 5 bytes to memory.
+[+] Cleared source array.
+[*] Byte at memory address: 0xFC
+[+] Memory freed.
 ```
 
-The critical Marshal functions used in the loaders:
+The memory address will be different every time you run it because the operating system assigns addresses dynamically.
 
-- `Marshal.Copy(byte[] source, int startIndex, IntPtr destination, int length)` copies bytes from a C# byte array to a raw memory address. Every loader uses this to copy shellcode into memory allocated by VirtualAlloc.
-- `Marshal.ReadByte(IntPtr address)` reads a single byte from a memory address. Used to inspect memory contents.
-- `Marshal.GetDelegateForFunctionPointer(IntPtr address, Type type)` converts a raw function pointer to a callable C# delegate. This is how the loaders call dynamically resolved NT functions. You get the function's address with GetProcAddress, then convert it to a delegate you can call like a normal function.
-- `Marshal.SizeOf(Type type)` returns the size of a structure in bytes. Used when filling STARTUPINFO and other Windows API structures.
+### Part 12: Building Strings from Numbers (Avoiding Static Detection)
 
-`Array.Clear(data, 0, data.Length)` zeroes out the byte array. This is a security practice: after copying shellcode to unmanaged memory, clear the managed copy so the shellcode does not stay in two places. If Defender's memory scanner runs, it only finds the shellcode in the executable memory region, not in the managed heap.
+This last section connects directly to evasion. In Loaders 04, 07, and 08, the code needs to reference specific Windows function names like "AmsiScanBuffer" and "EtwEventWrite". If you write those names as strings in your code, they appear in the compiled binary exactly as written. Defender scans binaries for known function names associated with malware, and "AmsiScanBuffer" is on the list.
 
-### Building Strings from Integer Arithmetic
+The solution: instead of storing the string, store the numbers that correspond to each character. Every character has a numeric value (its ASCII code). 'A' is 65, 'B' is 66, 'a' is 97, and so on. If you store the numbers and build the string at runtime, the string never appears in the compiled file.
 
-This technique appears in Loaders 04 (AMSI Bypass), 07 (ETW Patch), and 08 (Combined Evasion). The problem: if you write `string name = "AmsiScanBuffer"` in your C# code, the string "AmsiScanBuffer" is embedded in the compiled binary exactly as written. Defender's static scanner finds it and flags your binary because "AmsiScanBuffer" is a known indicator of AMSI bypass tools.
+The loaders use a function called `FromOffsets` that takes a base number and a list of offsets:
 
-The solution: instead of storing the string, store the integer values of each character and construct the string at runtime.
+```csharp
+    static string FromOffsets(int baseVal, params int[] offsets)
+    {
+        char[] c = new char[offsets.Length];
+```
+
+The function creates a character array the same size as the number of offsets.
+
+```csharp
+        for (int i = 0; i < offsets.Length; i++)
+            c[i] = (char)(baseVal + offsets[i]);
+```
+
+For each offset, it adds the base value to the offset and converts the result to a character. If the base is 32 and the offset is 33, you get 32 + 33 = 65, which is 'A'. If the offset is 77, you get 32 + 77 = 109, which is 'm'.
+
+```csharp
+        return new string(c);
+    }
+```
+
+Convert the character array to a string and return it.
+
+The `params` keyword means you can pass any number of values and C# automatically collects them into an array. So you call it like:
+
+```csharp
+        string name = FromOffsets(32, 33, 77, 83, 73);
+```
+
+And C# treats `33, 77, 83, 73` as the array `{33, 77, 83, 73}`.
+
+The compiled binary contains the numbers 32, 33, 77, 83, 73, which are meaningless to Defender's scanner. The string "Amsi" is constructed only at runtime, in memory, where the static file scanner cannot see it.
+
+Here is the complete program:
 
 ```csharp
 using System;
 
 class Program
 {
-    // Build a string from integer offsets above a base value.
-    // The compiler stores the integers (32, 33, 77, 83, etc.), not the characters.
-    // At runtime, the function adds each offset to the base and converts to a char.
     static string FromOffsets(int baseVal, params int[] offsets)
     {
         char[] c = new char[offsets.Length];
@@ -763,294 +1201,119 @@ class Program
 
     static void Main(string[] args)
     {
-        // Building "AmsiScanBuffer" from offsets.
-        // 'A' = 65 = 32 + 33
-        // 'm' = 109 = 32 + 77
-        // 's' = 115 = 32 + 83
-        // 'i' = 105 = 32 + 73
-        // ... and so on.
-        string name = FromOffsets(32, 33,77,83,73,51,67,65,78,34,85,70,70,69,82);
-        Console.WriteLine("Built string: " + name);
+        string s1 = FromOffsets(32, 33,77,83,73,51,67,65,78,34,85,70,70,69,82);
+        Console.WriteLine("Built: " + s1);
 
-        // Building "kernel32.dll" from offsets.
-        string dll = FromOffsets(32, 75,69,82,78,69,76,19,18,14,68,76,76);
-        Console.WriteLine("Built string: " + dll);
+        string s2 = FromOffsets(32, 75,69,82,78,69,76,19,18,14,68,76,76);
+        Console.WriteLine("Built: " + s2);
 
-        // Building "ntdll" from offsets.
-        string ntdll = FromOffsets(32, 78,84,68,76,76);
-        Console.WriteLine("Built string: " + ntdll);
+        string s3 = FromOffsets(32, 78,84,68,76,76);
+        Console.WriteLine("Built: " + s3);
     }
 }
 ```
 
 Output:
 ```
-Built string: AmsiScanBuffer
-Built string: kernel32.dll
-Built string: ntdll
+Built: AmsiScanBuffer
+Built: kernel32.dll
+Built: ntdll
 ```
 
-How the offset arithmetic works: each character in a string has a numeric value (its ASCII code). 'A' is 65, 'a' is 97, '0' is 48. If you choose a base value of 32, then 'A' is base + 33, 'm' is base + 77, and so on. The compiler stores the integers 32, 33, 77, 83 in the binary. It does not store the string "AmsiScanBuffer". At runtime, the function adds 32 + 33 = 65 = 'A', 32 + 77 = 109 = 'm', and so on, building the string character by character.
-
-Defender's static scanner searches the binary for known strings. It will not find "AmsiScanBuffer" because that string does not exist in the binary. It only exists in memory at runtime, after the offsets are computed.
-
-The `params` keyword in `params int[] offsets` means you can pass any number of int arguments and C# automatically puts them into an array. So `FromOffsets(32, 33,77,83,73)` passes baseVal=32 and offsets={33,77,83,73}.
-
-### Structures (Structs)
-
-Windows API functions often require you to pass structured data: groups of related values packed together in a specific order and size. C# uses `struct` to define these structures, and the `StructLayout` attribute tells the compiler to arrange the fields exactly as Windows expects them.
-
-```csharp
-using System;
-using System.Runtime.InteropServices;
-
-class Program
-{
-    // STARTUPINFO is a Windows structure used by CreateProcess.
-    // It contains information about how the new process's window should appear.
-    // LayoutKind.Sequential means the fields are arranged in memory in the
-    // order they are declared, with no reordering by the compiler.
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    struct STARTUPINFO
-    {
-        public int cb;              // size of this structure in bytes
-        public string lpReserved;
-        public string lpDesktop;
-        public string lpTitle;
-        public int dwX, dwY, dwXSize, dwYSize;
-        public int dwXCountChars, dwYCountChars;
-        public int dwFillAttribute;
-        public int dwFlags;
-        public short wShowWindow;
-        public short cbReserved2;
-        public IntPtr lpReserved2;
-        public IntPtr hStdInput, hStdOutput, hStdError;
-    }
-
-    static void Main(string[] args)
-    {
-        // Create an instance and set the size field.
-        // cb must be set to the size of the structure. Windows uses this
-        // to know which version of the structure you are using.
-        STARTUPINFO si = new STARTUPINFO();
-        si.cb = Marshal.SizeOf(si);
-
-        Console.WriteLine("STARTUPINFO size: " + si.cb + " bytes");
-    }
-}
-```
-
-You will see STARTUPINFO and PROCESS_INFORMATION structures in Loader 06 (Early Bird APC Injection), which uses CreateProcess to start a suspended process. The structure fields are set to specific values that control how the process is created. You do not need to memorize these structures. Each loader document explains the fields that matter for that specific technique.
-
-### Putting It All Together: A Complete Mini-Loader
-
-Here is a complete program that uses every concept from this document. It reads a file, XOR-decrypts it with a key from the command line, and displays the result. This is the exact workflow that every loader follows before the execution step (which requires Windows API calls covered in the next document).
-
-```csharp
-using System;
-using System.IO;
-
-class Program
-{
-    static byte[] HexToBytes(string hex)
-    {
-        byte[] bytes = new byte[hex.Length / 2];
-        for (int i = 0; i < bytes.Length; i++)
-        {
-            bytes[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
-        }
-        return bytes;
-    }
-
-    static byte[] TransformData(byte[] data, byte[] key)
-    {
-        byte[] result = new byte[data.Length];
-        for (int i = 0; i < data.Length; i++)
-        {
-            result[i] = (byte)(data[i] ^ key[i % key.Length]);
-        }
-        return result;
-    }
-
-    static void PrintHex(byte[] data)
-    {
-        for (int i = 0; i < data.Length; i++)
-        {
-            Console.Write(data[i].ToString("X2") + " ");
-            if ((i + 1) % 16 == 0) Console.WriteLine();
-        }
-        Console.WriteLine();
-    }
-
-    static void Main(string[] args)
-    {
-        if (args.Length < 2)
-        {
-            Console.WriteLine("Usage: program.exe <file> <key_hex>");
-            Console.WriteLine("Example: program.exe data.bin 4A7F2B1C");
-            return;
-        }
-
-        string filePath = args[0];
-        string keyHex = args[1];
-
-        // Step 1: Read file.
-        if (!File.Exists(filePath))
-        {
-            Console.WriteLine("[-] File not found: " + filePath);
-            return;
-        }
-        byte[] fileData = File.ReadAllBytes(filePath);
-        Console.WriteLine("[+] Read " + fileData.Length + " bytes from " + filePath);
-
-        // Step 2: Parse key.
-        byte[] key = HexToBytes(keyHex);
-        Console.WriteLine("[+] Key: " + keyHex + " (" + key.Length + " bytes)");
-
-        // Step 3: Decrypt.
-        byte[] decrypted = TransformData(fileData, key);
-        Console.WriteLine("[+] Decrypted " + decrypted.Length + " bytes");
-
-        // Step 4: Display first 32 bytes.
-        Console.WriteLine("[*] First 32 bytes of decrypted data:");
-        byte[] display = new byte[Math.Min(32, decrypted.Length)];
-        Array.Copy(decrypted, display, display.Length);
-        PrintHex(display);
-
-        // Step 5: Clean up.
-        Array.Clear(fileData, 0, fileData.Length);
-        Array.Clear(decrypted, 0, decrypted.Length);
-        Console.WriteLine("[+] Memory cleared.");
-    }
-}
-```
-
-This program has the same structure as Loaders 02 through 08: parse command-line arguments, read a file, convert the key, decrypt the data, and clear memory after use. The only thing missing is the Windows API calls that allocate executable memory and run the decrypted shellcode. Those come in Documents 03 (Windows API) and 04 (Memory Fundamentals).
+The strings "AmsiScanBuffer", "kernel32.dll", and "ntdll" exist only when the program runs. They are not stored anywhere in the compiled file. This is how the loaders reference sensitive Windows function and DLL names without triggering Defender's static analysis.
 
 ## Compilation and Execution
 
-To compile and run any of the examples in this document:
+For every example in this document:
 
-```
-cd C:\Users\kimjongun\Desktop\CSharpLab\Lesson01
-```
+1. Open the Lesson folder: `cd C:\Users\kimjongun\Desktop\CSharpLab\Lesson`
+2. Edit Program.cs with the example code
+3. Run: `dotnet run`
+4. For programs that use command-line arguments: `dotnet run -- arg1 arg2 arg3`
 
-Edit Program.cs with the code you want to test, then:
-
-```
-dotnet run
-```
-
-For programs that take command-line arguments:
-
-```
-dotnet run -- data.bin 4A7F2B1C
-```
-
-The `--` separates dotnet's own arguments from your program's arguments. Everything after `--` is passed to your program as `args`.
-
-For the mini-loader at the end, first create a test file on the Windows VM:
-
-```powershell
-# In PowerShell, create a test binary file.
-[byte[]]$bytes = 0xFC, 0x48, 0x83, 0xE4, 0xF0, 0xE8, 0xCC, 0x00, 0x00, 0x00
-[System.IO.File]::WriteAllBytes("C:\Users\kimjongun\Desktop\CSharpLab\Lesson01\test.bin", $bytes)
-```
-
-Then run:
-
-```
-dotnet run -- test.bin 4A7F2B1C
-```
-
-You should see the file size, key info, decrypted bytes, and the memory-cleared confirmation.
+The `--` separates dotnet's arguments from your program's arguments.
 
 ## Confirming Success
 
-After completing this document, you should be able to:
+After completing this document, verify you can do each of these:
 
-- [ ] Write a C# program from scratch with the correct structure (using, class, Main)
-- [ ] Declare variables of the types used in loaders (int, uint, byte, string, bool, IntPtr)
-- [ ] Create and manipulate byte arrays (create, access individual bytes, iterate over them)
-- [ ] Write a XOR encryption/decryption function that works on byte arrays with a multi-byte key
-- [ ] Convert between hex strings and byte arrays (HexToBytes and BytesToHex)
-- [ ] Read and write binary files using File.ReadAllBytes and File.WriteAllBytes
-- [ ] Parse command-line arguments and handle optional parameters
-- [ ] Write functions with parameters and return values
-- [ ] Use if statements to check for errors and exit early
-- [ ] Use for loops to iterate over arrays
-- [ ] Understand what Marshal.Copy does (copy bytes between managed and unmanaged memory)
-- [ ] Understand what FromOffsets does (build strings from integer arithmetic to avoid static detection)
-- [ ] Understand what structures are and why Windows API functions need them
+- [ ] Write a C# program with the correct structure (using, class, Main)
+- [ ] Create variables of different types (int, byte, string, bool, IntPtr)
+- [ ] Use if/else to check conditions and handle errors
+- [ ] Write a for loop that processes every element in an array
+- [ ] Create byte arrays, access individual bytes, and print them as hex
+- [ ] Write a function that takes parameters and returns a result
+- [ ] XOR-encrypt a byte array with a single-byte key
+- [ ] XOR-encrypt a byte array with a multi-byte key using the modulo cycle
+- [ ] Read a binary file into a byte array with File.ReadAllBytes
+- [ ] Parse command-line arguments from args
+- [ ] Use Marshal.Copy to move bytes between a C# array and a memory address
+- [ ] Build a string from integer offsets using FromOffsets
 
 ## What Was Gained
 
-You now know enough C# to read and understand every loader in this curriculum. The specific skills you have are:
+You now know enough C# to understand every loader in this curriculum. Here is specifically what connects to the loaders:
 
-- **Byte array manipulation.** Shellcode is bytes. XOR keys are bytes. Everything the loaders work with is bytes. You can create byte arrays, read them from files, encrypt/decrypt them with XOR, and convert between hex strings and byte arrays.
+**Variables and types** let you store process IDs, port numbers, memory addresses, and the results of Windows function calls. The `IntPtr` type holds memory addresses returned by functions like VirtualAlloc.
 
-- **Function writing.** Every loader is organized into functions. You can write functions that take parameters, do work, and return results. You understand how the TransformData (XOR) and HexToBytes functions work.
+**If statements** are used after every Windows function call to check whether it succeeded or failed. If memory allocation fails, the loader stops. If a process cannot be opened, the loader stops. This error-checking pattern appears dozens of times across the 8 loaders.
 
-- **Command-line argument parsing.** Every loader takes parameters from the command line so the same binary works with different payloads, keys, and targets. You can parse args, check their count, handle optional parameters, and convert strings to the right type.
+**Loops** process shellcode byte by byte. XOR encryption, hex conversion, building strings from offsets, and printing diagnostic output all use loops to walk through arrays.
 
-- **Error handling.** Every Windows API call can fail, and every loader checks for failure. You understand the pattern: call the function, check if the return value indicates failure, print an error and exit if it does.
+**Byte arrays** are the core data structure. Shellcode is a byte array. XOR keys are byte arrays. The patch bytes that disable AMSI and ETW are byte arrays. Everything the loaders manipulate is bytes.
 
-- **String construction.** You understand why sensitive strings (function names, DLL names) cannot be stored as literals in the binary and how FromOffsets builds them at runtime from integer arithmetic.
+**Functions** organize code into reusable pieces. TransformData handles XOR. HexToBytes converts command-line keys. FromOffsets builds strings. PatchTelemetry disables ETW. PatchScanner disables AMSI. Each piece of functionality is a function.
 
-- **Marshal basics.** You know that Marshal.Copy bridges the gap between C# byte arrays and raw memory addresses, which is the core operation that every loader performs when copying shellcode into allocated memory.
+**File reading** gets shellcode from disk into memory. Every loader starts by reading a .bin file with File.ReadAllBytes.
 
-These are not textbook C# skills. These are the specific programming capabilities needed to write evasion tools. You do not know about inheritance, generics, LINQ, async/await, or any of the advanced C# features that application developers use. You do not need them. Every loader in this curriculum uses only the concepts taught in this document plus the Windows API concepts in Documents 03 and 04.
+**Command-line arguments** make the loaders flexible. The same binary works with different payloads, different keys, and different target processes.
+
+**Marshal.Copy** moves bytes from C# space into the raw memory that Windows functions work with. This is the step between "shellcode in a byte array" and "shellcode in executable memory."
+
+**FromOffsets** hides sensitive strings from static scanners. Without it, every loader would contain strings like "AmsiScanBuffer" and "EtwEventWrite" that Defender immediately flags.
 
 ## Common Threats and Variations
 
-### Variation 1: Using Top-Level Statements (Modern C#)
+### Variation 1: Top-Level Statements
 
-.NET 6 and later supports "top-level statements" where you can write code without the class and Main wrapper:
+.NET 6 and later lets you skip the class and Main wrapper:
 
 ```csharp
-// This is valid in .NET 6+ but we do not use it in the loaders.
 Console.WriteLine("Hello");
 ```
 
-The loaders in this curriculum use the explicit class and Main structure because it is clearer for teaching and because it works with all .NET versions. If you see examples online using top-level statements, they do the same thing.
+This works but the loaders use the explicit structure because it is clearer when you have multiple functions. Both produce the same compiled output.
 
-### Variation 2: Using var Instead of Explicit Types
+### Variation 2: String Interpolation
 
-C# allows `var` which infers the type automatically:
-
-```csharp
-var port = 4444;          // compiler infers int
-var data = new byte[256]; // compiler infers byte[]
-```
-
-The loaders use explicit types (`int port`, `byte[] data`) because when you are learning, seeing the types makes the code easier to understand. Both styles produce identical compiled output.
-
-### Variation 3: String Interpolation
-
-Instead of string concatenation with `+`:
+Instead of joining strings with `+`:
 
 ```csharp
 Console.WriteLine($"Target: {targetIP}:{port}");
 ```
 
-This is cleaner but produces the same result. Some loaders use concatenation (`+`) for simplicity. Both work.
+The `$` before the quotes lets you put variables directly in the text inside `{}`. This is cleaner but does the same thing.
+
+### Variation 3: LINQ and Modern C#
+
+C# has powerful features like LINQ, async/await, generics, and lambda expressions. The loaders do not use any of these. You do not need them for evasion development. If you learn them later for other projects, great, but they are not part of this curriculum.
 
 ## Detection and Defense (Blue Team Perspective)
 
-From a defender's perspective, the C# concepts in this document create specific detection opportunities:
+The C# concepts in this document create specific detection opportunities for defenders:
 
-**String literal scanning.** Security teams can scan .NET binaries for suspicious string literals. If a binary contains strings like "shellcode", "inject", "bypass", "payload", or known function names like "AmsiScanBuffer", that is a strong indicator of a red team tool. This is why the loaders use integer arithmetic to build strings at runtime.
+**String scanning.** Defenders can scan .NET binaries for suspicious strings. If a compiled program contains "shellcode", "inject", "bypass", or Windows function names like "AmsiScanBuffer", that is a strong malware indicator. Tools like YARA with .NET-aware rules can automate this.
 
-Blue team action: deploy YARA rules that scan .NET assemblies for known offensive tool strings. Tools like Florian Roth's signature-base already include rules for common C# red team tools.
+Blue team action: deploy YARA rules that match known offensive C# tool strings. Florian Roth's signature-base repository has rules for this.
 
-**Method and class name scanning.** .NET metadata includes all class and method names. A class called "Injector" with a method called "XorDecrypt" is suspicious. This is why the loaders use neutral names like "Program" and "TransformData".
+**Method name analysis.** .NET metadata includes all function names. "XorDecrypt" or "InjectShellcode" are red flags. Tools like dnfile can extract .NET metadata for automated scanning.
 
-Blue team action: scan .NET assemblies for method names that match known offensive techniques. The dnfile Python library can extract .NET metadata for automated scanning.
+Blue team action: scan .NET assemblies for method names matching offensive patterns. Create alerts for binaries with methods named after known attack techniques.
 
-**Import table analysis.** When a .NET binary uses P/Invoke (DllImport) to call Windows API functions, those function names appear in the binary's import table. A binary that imports VirtualAlloc, WriteProcessMemory, and CreateRemoteThread together is suspicious.
+**Import table inspection.** When a C# program uses DllImport to call Windows functions, those names appear in the PE import table. Certain combinations (VirtualAlloc + WriteProcessMemory + CreateRemoteThread) are the classic injection pattern.
 
-Blue team action: analyze PE import tables for suspicious API combinations. Tools like pefile and LIEF can extract this data. The combination of VirtualAlloc + any memory-writing function + any thread-creation function is a strong indicator of process injection.
+Blue team action: monitor for executables that import suspicious API combinations. Endpoint detection tools can flag these at load time.
 
 ## What Comes Next
 
-Start Document 03 (lab/materials/03_windows_api.md). It teaches how to call Windows API functions from C# using P/Invoke and DllImport. You will learn how C# talks to the operating system, which is the bridge between the programming concepts you just learned and the actual evasion techniques that use Windows functions to allocate memory, write shellcode, and create threads.
+Start Document 03 (lab/materials/03_windows_api.md). It teaches how C# talks to the Windows operating system using P/Invoke and DllImport. You will learn to call Windows functions that allocate memory, change memory permissions, and create threads. These are the building blocks that every loader uses to actually execute shellcode.
