@@ -38,10 +38,14 @@
 //   - Document: 09_reflective_injection.md
 //
 // BUILD INSTRUCTIONS:
-//   csc /unsafe /out:reflective_inject.exe 05_reflective_injector.cs
+//   On Dev Box (ammulu, 192.168.10.150):
+//     csc /unsafe /out:reflective_inject.exe 05_reflective_injector.cs
 //
 // USAGE:
-//   reflective_inject.exe <target_process_name> <path_to_dll_or_shellcode.bin>
+//   1. Compile on Dev Box (ammulu).
+//   2. Transfer reflective_inject.exe and payload data to Target (kimjongun, 192.168.10.100).
+//   3. Run on Target:
+//        reflective_inject.exe <target_process_name> <path_to_dll_or_shellcode.bin>
 //   Example: reflective_inject.exe explorer payload.bin
 //
 // NOTE:

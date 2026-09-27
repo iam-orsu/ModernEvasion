@@ -8,15 +8,24 @@ This curriculum trains red team operators to understand and bypass Windows 11 De
 ## Lab Environment (Fixed)
 ```
 Hypervisor:        VMware Pro
-Target OS:         Windows 11 Pro (fully updated)
-Attacker OS:       Kali Linux
+Machines:          3 (Kali attacker, Windows dev box, Windows target)
 Subnet:            192.168.10.0/24
 Domain:            None (standalone)
-Defender:          Enabled, default settings, never disabled
+
+Attacker:          Kali Linux at 192.168.10.200 (username: kali)
+                   Generates shellcode, runs listeners, hosts files
+
+Dev Box:           Windows 11 Pro at 192.168.10.150 (username: ammulu)
+                   Visual Studio 2022 Community, .NET 6+, compiles all loaders
+                   This machine builds the malware. No Defender testing here.
+
+Target:            Windows 11 Pro at 192.168.10.100 (username: kimjongun)
+                   Defender enabled, default settings, never disabled
+                   Only runs compiled binaries. No dev tools installed.
+
 Language:          C#
-IDE:               Visual Studio 2022 Community (free)
-Framework:         .NET 6 or later
-Username:          kimjongun
+IDE:               Visual Studio 2022 Community (on dev box only)
+Framework:         .NET 6 or later (on dev box only)
 Git:               All work commits and pushed to main
 ```
 

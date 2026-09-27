@@ -45,10 +45,14 @@
 //   - Document: 07_direct_syscalls.md (ETW section)
 //
 // BUILD INSTRUCTIONS:
-//   csc /unsafe /out:etw_patch.exe 07_etw_patch.cs
+//   On Dev Box (ammulu, 192.168.10.150):
+//     csc /unsafe /out:etw_patch.exe 07_etw_patch.cs
 //
 // USAGE:
-//   etw_patch.exe
+//   1. Compile on Dev Box (ammulu).
+//   2. Transfer etw_patch.exe to Target (kimjongun, 192.168.10.100).
+//   3. Run on Target:
+//        etw_patch.exe
 //   (Run this before any other evasion technique in the same process)
 //
 // ============================================================================

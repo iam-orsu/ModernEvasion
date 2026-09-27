@@ -8,17 +8,17 @@ At this point you know:
 - C# gives you direct access to Windows functions through P/Invoke
 - Defender uses static file scanning, cloud analysis, AMSI, API hooks, ETW logging, and behavioral analysis
 - You will build 8 loaders, each targeting a specific detection layer
-- You need two virtual machines: a Windows 11 target and a Kali Linux attacker
+- You need three virtual machines: a Windows 11 dev box for compiling loaders, a Windows 11 target for running loaders against Defender, and a Kali Linux attacker for generating shellcode and running listeners
 
-You need a host machine with at least 16 GB RAM, 100 GB free disk, and a CPU with virtualization support (Intel VT-x or AMD-V).
+You need a host machine with at least 24 GB RAM, 150 GB free disk, and a CPU with virtualization support (Intel VT-x or AMD-V).
 
 ## Why This Is Next
 
-Every loader in this curriculum compiles on a Windows 11 VM and runs against a real Defender installation. The shellcode payloads come from msfvenom on a Kali VM. The two machines communicate over an isolated network where you can test without affecting your real network or the internet.
+Every loader in this curriculum compiles on a dedicated dev box (a Windows 11 machine with Visual Studio installed) and then gets transferred to a separate Windows 11 target machine that has Defender enabled. The shellcode payloads come from msfvenom on a Kali machine. All three machines communicate over an isolated network where you can test without affecting your real network or the internet.
 
-If the lab is wrong, nothing else works. A wrong network configuration means your shellcode's reverse connection cannot reach Kali, so you will think your loader failed when actually the network is broken. A missing .NET SDK means you cannot compile. An outdated Defender means you are testing against old signatures, and your loaders will work in the lab but fail on a real target. This document gets the infrastructure right so every subsequent document works the first time.
+If the lab is wrong, nothing else works. A wrong network configuration means your shellcode's reverse connection cannot reach Kali, so you will think your loader failed when actually the network is broken. A missing .NET SDK on the dev box means you cannot compile. An outdated Defender on the target means you are testing against old signatures, and your loaders will work in the lab but fail on a real target. This document gets the infrastructure right so every subsequent document works the first time.
 
-The lab also teaches you something that matters on real engagements: the attacker-target relationship. On a red team engagement, you have your attacker machine (where you prepare payloads, run listeners, and receive connections) and the target machine (the client's system you are testing). The lab mirrors this exactly. Learning to work across two machines, transfer files, and manage connections is an operational skill you will use on every engagement.
+The lab also teaches you something that matters on real engagements: the three-machine workflow. On a real red team engagement, you have your development machine (where you build your tools and compile payloads), your attacker machine (where you generate shellcode, run listeners, and receive connections), and the target machine (the client's system you are testing). You never compile your malware on the target. You build it on your own dev machine, transfer only the final binary to the target, and run it there. The lab mirrors this exactly. Learning to work across three machines, transfer files, and manage connections is an operational skill you will use on every engagement.
 
 ## How This Works
 
@@ -33,10 +33,10 @@ VMware Workstation Pro is the hypervisor you will use. It creates a layer betwee
 VMware lets you create virtual networks that exist only inside the hypervisor. A host-only network connects VMs to each other but does not connect them to the internet or to your host machine's real network. This isolation is critical:
 
 - Your shellcode payloads make network connections (reverse shells call back to the attacker machine). On a host-only network, those connections stay inside the hypervisor. If you accidentally used a bridged network (which connects to your real network), your shellcode could try to connect to real machines on your network.
-- Defender's cloud protection sends file hashes to Microsoft for analysis. On a host-only network with no internet, cloud protection cannot reach Microsoft. This is actually a realistic scenario because many enterprise networks restrict outbound connections. However, for the most accurate testing, you can optionally give the Windows VM internet access through a NAT adapter for Defender updates only, then switch back to host-only for testing.
+- Defender's cloud protection sends file hashes to Microsoft for analysis. On a host-only network with no internet, cloud protection cannot reach Microsoft. This is actually a realistic scenario because many enterprise networks restrict outbound connections. However, for the most accurate testing, you can optionally give the target VM internet access through a NAT adapter for Defender updates only, then switch back to host-only for testing.
 - Nothing you do in the lab affects anything outside the lab. This is a safety boundary that protects your real environment.
 
-Both VMs will be on the network 192.168.10.0/24. That means all IP addresses start with 192.168.10 and the subnet mask is 255.255.255.0. The /24 means the first 24 bits of the address are the network portion, which is a standard notation you will see everywhere in networking. The Windows VM gets 192.168.10.100 and Kali gets 192.168.10.200.
+All three VMs will be on the network 192.168.10.0/24. That means all IP addresses start with 192.168.10 and the subnet mask is 255.255.255.0. The /24 means the first 24 bits of the address are the network portion, which is a standard notation you will see everywhere in networking. The dev box gets 192.168.10.150, the target gets 192.168.10.100, and Kali gets 192.168.10.200.
 
 ### What Defender's Default Configuration Looks Like
 
@@ -97,7 +97,7 @@ class Program
 }
 ```
 
-This program does nothing interesting. It exists only to verify that the `dotnet` command can compile and run C# code on your Windows VM.
+This program does nothing interesting. It exists only to verify that the `dotnet` command can compile and run C# code on your dev box (ammulu, 192.168.10.150).
 
 ## Setting Up VMware Workstation Pro
 
@@ -139,11 +139,13 @@ Before creating VMs, set up the isolated network:
 
 This creates an isolated virtual switch that only your VMs can access. No traffic reaches the internet or your real network.
 
-## Setting Up the Windows 11 VM (Target Machine)
+## Setting Up the Windows 11 Target Machine
+
+The target machine is where your compiled loaders will run against Defender. This machine does NOT have Visual Studio or the .NET SDK installed. It only runs binaries. This is realistic because on a real engagement, the target machine is the client's computer and it does not have your development tools on it.
 
 ### Step 1: Download the Windows 11 ISO
 
-Go to Microsoft's website and download the Windows 11 ISO. An ISO is a single file that contains an exact copy of an installation disc. Select Windows 11 (multi-edition), choose your language, and download the 64-bit version. The file is approximately 5-6 GB.
+Go to Microsoft's website and download the Windows 11 ISO. An ISO is a single file that contains an exact copy of an installation disc. Select Windows 11 (multi-edition), choose your language, and download the 64-bit version. The file is approximately 5-6 GB. You will use this same ISO for the dev box VM later.
 
 ### Step 2: Create the Virtual Machine
 
@@ -156,7 +158,7 @@ In VMware:
 6. VM name: **Win11-Target**
 7. Choose a storage location with at least 60 GB free space
 8. Processors: 2 processors, 2 cores each (4 total cores). Windows 11 needs at least 2 cores. If your host has 8+ cores, you can give the VM more.
-9. Memory: **8192 MB (8 GB)** if your host has 16+ GB RAM. Minimum is 4096 MB (4 GB), but 8 GB gives smoother performance. Windows 11 needs more RAM because Defender's real-time scanning and cloud analysis run constantly in the background.
+9. Memory: **8192 MB (8 GB)** if your host has 24+ GB RAM. Minimum is 4096 MB (4 GB), but 8 GB gives smoother performance. Windows 11 needs more RAM because Defender's real-time scanning and cloud analysis run constantly in the background.
 10. Network: Select "Use host-only networking" and make sure it points to the host-only network you created (VMnet1 or whichever network has the 192.168.10.0 subnet)
 11. SCSI controller: LSI Logic SAS (default)
 12. Disk type: NVMe (faster) or SCSI (default)
@@ -195,7 +197,7 @@ During the out-of-box experience (OOBE), which is the first-time setup wizard th
 VMware Tools is a set of drivers and utilities that improves the VM experience: better display resolution, shared clipboard, drag-and-drop file support, and better performance.
 
 1. In VMware's menu bar, click VM > Install VMware Tools
-2. This mounts a virtual DVD in the Windows VM
+2. This mounts a virtual DVD in the VM
 3. Open File Explorer, navigate to the DVD drive (usually D:)
 4. Run setup64.exe
 5. Follow the installer with default settings
@@ -240,50 +242,9 @@ Click "Virus & threat protection updates" and then "Check for updates" to get th
 
 **Do not change any of these settings.** The entire point is testing against production Defender. Take a note of all the settings so you can verify they have not changed during testing.
 
-### Step 7: Install Visual Studio 2022 Community
+### Step 7: Set a Static IP Address
 
-Visual Studio 2022 Community is free and includes the C# compiler, .NET SDK, and a full IDE (Integrated Development Environment, which is a program for writing and debugging code) for writing C# programs.
-
-1. Open Edge browser in the Windows VM
-2. For this step only, you need internet access. Temporarily add a NAT network adapter in VMware (VM > Settings > Add > Network Adapter > NAT) alongside the host-only adapter. NAT (Network Address Translation) shares your host's internet connection with the VM.
-3. Go to visualstudio.microsoft.com
-4. Download Visual Studio 2022 Community
-5. Run the installer (it downloads a bootstrapper that then downloads the components you select)
-6. On the Workloads screen, check:
-   - **.NET desktop development** (this is the only workload you need. It installs the C# compiler, .NET SDK, and the development tools for building console applications)
-7. Click Install. This downloads and installs approximately 5-8 GB of components. Wait for it to complete.
-8. After installation, launch Visual Studio once to complete the initial setup (sign in or skip, choose a theme, etc.)
-9. Close Visual Studio after the initial setup
-
-After Visual Studio is installed, remove the NAT network adapter:
-1. Go to VM > Settings
-2. Select the NAT network adapter you added
-3. Click Remove
-4. Click OK
-
-The VM is now back to host-only networking with no internet access.
-
-### Step 8: Verify the .NET SDK
-
-Open a Command Prompt (cmd) or PowerShell window and run:
-
-```
-dotnet --version
-```
-
-You should see version 8.0.x or later. If `dotnet` is not recognized as a command, the .NET SDK did not install correctly. Go back to Visual Studio Installer and verify that the .NET desktop development workload is installed.
-
-Also verify that the C# compiler is available:
-
-```
-dotnet --list-sdks
-```
-
-This should show at least one SDK version installed.
-
-### Step 9: Set a Static IP Address
-
-The Windows VM needs a fixed IP address so Kali always knows where to find it. A static IP means the IP address stays the same every time the VM starts.
+The target machine needs a fixed IP address so Kali and the dev box always know where to find it.
 
 1. Open Settings > Network & Internet > Ethernet
 2. Click the network adapter (it should be the VMware host-only adapter)
@@ -305,16 +266,124 @@ ipconfig
 
 You should see the Ethernet adapter with IP 192.168.10.100 and subnet mask 255.255.255.0.
 
-### Step 10: Take a Snapshot
+### Step 8: Take a Snapshot
 
-This is critical. Before doing anything else, take a snapshot of the VM in its current clean state. A snapshot saves everything: every file on the hard drive, every setting, every running program, the exact state of the operating system.
+Take a snapshot of the target VM in its clean state.
 
 1. In VMware, go to VM > Snapshot > Take Snapshot
 2. Name it: "Clean - Lab Ready"
-3. Add a description: "Windows 11 Pro, fully updated, Defender active, VS2022 installed, .NET SDK working, IP 192.168.10.100"
+3. Add a description: "Windows 11 Pro, fully updated, Defender active, no dev tools, IP 192.168.10.100"
 4. Click Take Snapshot
 
 If anything goes wrong later (a loader corrupts the system, you accidentally change a Defender setting, etc.), you can restore this snapshot and be back to a known-good state in seconds.
+
+**Important:** Do NOT install Visual Studio or the .NET SDK on this machine. The target machine only runs compiled binaries. All compilation happens on the dev box.
+
+## Setting Up the Windows 11 Dev Box
+
+The dev box is your malware development machine. This is where Visual Studio 2022 and the .NET SDK are installed. You compile all loaders here, then transfer only the compiled .exe files and encrypted shellcode to the target machine.
+
+### Step 1: Create the Virtual Machine
+
+You will use the same Windows 11 ISO you downloaded earlier.
+
+In VMware:
+1. Click "Create a New Virtual Machine"
+2. Select "Custom (advanced)"
+3. Select "Installer disc image file (iso)" and browse to the same Windows 11 ISO
+4. VM name: **Win11-DevBox**
+5. Choose a storage location with at least 60 GB free space
+6. Processors: 2 processors, 2 cores each (4 total cores)
+7. Memory: **8192 MB (8 GB)** if your host has 24+ GB RAM. You can use 4096 MB (4 GB) if RAM is tight, since this machine does not need to run Defender as heavily.
+8. Network: **Use host-only networking** (the same host-only network, 192.168.10.0 subnet)
+9. Disk: 60 GB, store as single file
+10. Click Finish
+
+Before powering on, edit VM settings and set UEFI firmware and add a TPM, same as you did for the target machine.
+
+### Step 2: Install Windows 11
+
+Follow the same Windows 11 installation steps as the target machine, with one difference:
+
+During the OOBE (first-time setup):
+4. Enter the name: **ammulu** (not kimjongun, that is the target machine)
+5. Set a password you will remember
+
+Everything else is the same: local account, privacy settings off.
+
+### Step 3: Install VMware Tools
+
+Same process as the target machine. Install VMware Tools, restart.
+
+### Step 4: Install Visual Studio 2022 Community
+
+This is where the development tools go. Not on the target.
+
+1. Open Edge browser in the dev box VM
+2. Temporarily add a NAT network adapter in VMware (VM > Settings > Add > Network Adapter > NAT) for internet access
+3. Go to visualstudio.microsoft.com
+4. Download Visual Studio 2022 Community
+5. Run the installer
+6. On the Workloads screen, check:
+   - **.NET desktop development** (this installs the C# compiler, .NET SDK, and development tools for building console applications)
+7. Click Install. Wait for the 5-8 GB download and installation to complete.
+8. Launch Visual Studio once to complete initial setup (sign in or skip, choose a theme)
+9. Close Visual Studio after initial setup
+
+After Visual Studio is installed, remove the NAT network adapter:
+1. Go to VM > Settings
+2. Select the NAT network adapter you added
+3. Click Remove
+4. Click OK
+
+The dev box is now back to host-only networking.
+
+### Step 5: Verify the .NET SDK
+
+Open a Command Prompt or PowerShell on the dev box and run:
+
+```
+dotnet --version
+```
+
+You should see version 8.0.x or later. If `dotnet` is not recognized, go back to Visual Studio Installer and verify the .NET desktop development workload is installed.
+
+Also verify the C# compiler:
+
+```
+dotnet --list-sdks
+```
+
+This should show at least one SDK version installed.
+
+### Step 6: Set a Static IP Address
+
+1. Open Settings > Network & Internet > Ethernet
+2. Click the network adapter (VMware host-only adapter)
+3. Click Edit next to "IP assignment"
+4. Change from "Automatic (DHCP)" to "Manual"
+5. Toggle on IPv4
+6. Enter:
+   - IP address: **192.168.10.150**
+   - Subnet prefix length: **24**
+   - Gateway: leave blank
+   - Preferred DNS: leave blank
+7. Click Save
+
+Verify with:
+
+```
+ipconfig
+```
+
+You should see IP 192.168.10.150 and subnet mask 255.255.255.0.
+
+### Step 7: Take a Snapshot
+
+1. VM > Snapshot > Take Snapshot
+2. Name: "Clean - Lab Ready"
+3. Description: "Windows 11 Pro, VS2022 installed, .NET SDK working, IP 192.168.10.150, username ammulu"
+4. Click Take Snapshot
 
 ## Setting Up the Kali Linux VM (Attacker Machine)
 
@@ -331,7 +400,7 @@ In VMware:
 4. VM name: **Kali-Attacker**
 5. Processors: 2 processors, 1-2 cores each
 6. Memory: **4096 MB (4 GB)**. Kali is lighter than Windows and 4 GB is enough.
-7. Network: **Use host-only networking** (the same host-only network as the Windows VM)
+7. Network: **Use host-only networking** (the same host-only network as the target and dev box, 192.168.10.0 subnet)
 8. Disk: 40 GB, store as single file
 9. Click Finish
 
@@ -425,7 +494,7 @@ sudo apt install -y metasploit-framework python3 smbclient
 
 ### Step 6: Take a Snapshot
 
-Just like the Windows VM, snapshot Kali in its clean state:
+Just like the Windows VMs, snapshot Kali in its clean state:
 
 1. VM > Snapshot > Take Snapshot
 2. Name: "Clean - Lab Ready"
@@ -435,29 +504,38 @@ Just like the Windows VM, snapshot Kali in its clean state:
 
 ### Testing Network Connectivity
 
-From Kali, ping Windows:
+All three machines need to reach each other. From Kali, ping both Windows machines:
 
 ```bash
 ping -c 4 192.168.10.100
+ping -c 4 192.168.10.150
 ```
 
-You should see 4 replies. If you get "Destination Host Unreachable" or 100% packet loss:
+You should see 4 replies from each. If you get "Destination Host Unreachable" or 100% packet loss:
 
-1. Verify both VMs are on the same host-only network (check VM Settings > Network Adapter on both VMs)
-2. Verify both static IPs are set correctly (`ip addr show` on Kali, `ipconfig` on Windows)
-3. On Windows, check if the firewall is blocking ICMP (ping uses a protocol called ICMP). Open Windows Defender Firewall > Advanced Settings > Inbound Rules > find "File and Printer Sharing (Echo Request - ICMPv4-In)" > right-click > Enable Rule. This allows ping without disabling the firewall.
+1. Verify all three VMs are on the same host-only network (check VM Settings > Network Adapter on each VM)
+2. Verify all static IPs are set correctly (`ip addr show` on Kali, `ipconfig` on both Windows machines)
+3. On each Windows machine, check if the firewall is blocking ICMP (ping uses a protocol called ICMP). Open Windows Defender Firewall > Advanced Settings > Inbound Rules > find "File and Printer Sharing (Echo Request - ICMPv4-In)" > right-click > Enable Rule. This allows ping without disabling the firewall.
 
-From Windows Command Prompt, ping Kali:
+From the dev box (ammulu, 192.168.10.150), ping the target and Kali:
 
 ```
+ping 192.168.10.100
 ping 192.168.10.200
 ```
 
-Four replies confirm bidirectional connectivity (both machines can reach each other).
+From the target (kimjongun, 192.168.10.100), ping the dev box and Kali:
+
+```
+ping 192.168.10.150
+ping 192.168.10.200
+```
+
+All pings returning replies confirms full connectivity between all three machines.
 
 ### Testing File Transfer Method 1: Python HTTP Server
 
-This is the primary method you will use to transfer loaders from Kali to Windows.
+This is the primary method you will use to transfer shellcode from Kali to the dev box, and to transfer compiled loaders from the dev box to the target.
 
 On Kali, create a test file and start a web server:
 
@@ -469,36 +547,56 @@ python3 -m http.server 8080
 
 The terminal shows `Serving HTTP on 0.0.0.0 port 8080`. The server is running and will serve any file in /tmp to anyone who connects on port 8080.
 
-On Windows, open PowerShell and download the file:
+On the dev box (ammulu), open PowerShell and download the file:
 
 ```powershell
-Invoke-WebRequest -Uri "http://192.168.10.200:8080/transfer_test.txt" -OutFile "C:\Users\kimjongun\Desktop\transfer_test.txt"
+Invoke-WebRequest -Uri "http://192.168.10.200:8080/transfer_test.txt" -OutFile "C:\Users\ammulu\Desktop\transfer_test.txt"
 ```
 
 Then verify the file:
 
 ```powershell
+Get-Content "C:\Users\ammulu\Desktop\transfer_test.txt"
+```
+
+You should see "file transfer test from kali". If this works, HTTP transfer from Kali to the dev box is ready.
+
+Now test the same transfer to the target machine. On the target (kimjongun), open PowerShell:
+
+```powershell
+Invoke-WebRequest -Uri "http://192.168.10.200:8080/transfer_test.txt" -OutFile "C:\Users\kimjongun\Desktop\transfer_test.txt"
 Get-Content "C:\Users\kimjongun\Desktop\transfer_test.txt"
 ```
 
-You should see "file transfer test from kali". If this works, HTTP transfer is ready.
-
 On Kali, stop the Python server with Ctrl+C.
 
-This transfer method matters for the curriculum because when you generate shellcode on Kali and need to get it onto Windows, you will host it on the Python HTTP server and download it from Windows. Defender will scan the downloaded file, which is exactly what we want for testing. If the shellcode file gets flagged on download, you know the file itself contains detected bytes and needs encoding (which is what Loader 02 teaches).
+You also need to transfer files from the dev box to the target. On the dev box (ammulu), start a Python HTTP server. First, install Python on the dev box by temporarily adding a NAT adapter (same as you did for Visual Studio), downloading Python from python.org, installing it with "Add to PATH" checked, then removing the NAT adapter. Then:
+
+```
+cd C:\Users\ammulu\Desktop
+python -m http.server 8080
+```
+
+On the target (kimjongun), download a test file:
+
+```powershell
+Invoke-WebRequest -Uri "http://192.168.10.150:8080/transfer_test.txt" -OutFile "C:\Users\kimjongun\Desktop\transfer_from_devbox.txt"
+```
+
+This transfer path (dev box to target) is the most important one in the curriculum. Your workflow will be: generate shellcode on Kali, transfer it to the dev box, compile the loader on the dev box, then transfer the compiled .exe and any encrypted shellcode files from the dev box to the target. The target only runs things, it never compiles.
 
 ### Testing File Transfer Method 2: SMB Share
 
 SMB is useful when you need bidirectional file transfer, especially when pulling files from Windows to Kali for analysis.
 
-On Windows:
+Set up an SMB share on the target machine (kimjongun, 192.168.10.100):
 1. Create a folder: `C:\Share`
 2. Right-click the folder > Properties > Sharing tab > Share
 3. In the sharing dialog, type "Everyone" in the name field and click Add
 4. Set the permission level to "Read/Write"
 5. Click Share, then Done
 
-On Kali, connect to the share:
+On Kali, connect to the target's share:
 
 ```bash
 smbclient //192.168.10.100/Share -U kimjongun
@@ -512,34 +610,38 @@ smb: \> ls
 smb: \> exit
 ```
 
-On Windows, check C:\Share and you should see transfer_test.txt.
+On the target, check C:\Share and you should see transfer_test.txt.
+
+You can also set up an SMB share on the dev box (ammulu, 192.168.10.150) the same way if you want bidirectional SMB access between all three machines. Create `C:\Share` on the dev box and share it the same way.
 
 ### Verifying the Build Toolchain
 
-On the Windows VM, open Command Prompt and run:
+On the dev box (ammulu, 192.168.10.150), open Command Prompt and run:
 
 ```
-mkdir C:\Users\kimjongun\Desktop\TestProject
-cd C:\Users\kimjongun\Desktop\TestProject
+mkdir C:\Users\ammulu\Desktop\TestProject
+cd C:\Users\ammulu\Desktop\TestProject
 dotnet new console -n BuildTest
 cd BuildTest
 dotnet run
 ```
 
-You should see "Hello, World!" printed. This confirms the .NET SDK compiles and runs C# code correctly.
+You should see "Hello, World!" printed. This confirms the .NET SDK compiles and runs C# code correctly on the dev box.
 
 Clean up:
 
 ```
-cd C:\Users\kimjongun\Desktop
+cd C:\Users\ammulu\Desktop
 rmdir /s /q TestProject
 ```
+
+Do NOT run this on the target machine (kimjongun). The target machine does not have the .NET SDK and should not have it. The target only runs compiled .exe files.
 
 ## Confirming Success
 
 Your lab is fully set up when every item on this list is verified:
 
-**Windows 11 VM:**
+**Target Machine (kimjongun, 192.168.10.100):**
 - [ ] Windows 11 Pro installed and fully updated
 - [ ] Static IP set to 192.168.10.100
 - [ ] Defender real-time protection: ON
@@ -547,12 +649,20 @@ Your lab is fully set up when every item on this list is verified:
 - [ ] Defender automatic sample submission: ON
 - [ ] Defender tamper protection: ON
 - [ ] Defender signature database is current (check for updates in Windows Security)
+- [ ] No Visual Studio installed (this is the target, not the dev box)
+- [ ] No .NET SDK installed
+- [ ] Snapshot taken ("Clean - Lab Ready")
+
+**Dev Box (ammulu, 192.168.10.150):**
+- [ ] Windows 11 Pro installed
+- [ ] Static IP set to 192.168.10.150
 - [ ] Visual Studio 2022 Community installed with .NET desktop development workload
 - [ ] `dotnet --version` returns 6.0 or later
 - [ ] `dotnet new console` and `dotnet run` produces "Hello, World!"
+- [ ] Python installed for hosting HTTP server
 - [ ] Snapshot taken ("Clean - Lab Ready")
 
-**Kali Linux VM:**
+**Kali Linux VM (kali, 192.168.10.200):**
 - [ ] Kali Linux installed with default tools
 - [ ] Static IP set to 192.168.10.200
 - [ ] `msfvenom --version` works
@@ -561,22 +671,24 @@ Your lab is fully set up when every item on this list is verified:
 - [ ] Snapshot taken ("Clean - Lab Ready")
 
 **Network and Transfers:**
-- [ ] Kali can ping Windows (192.168.10.100)
-- [ ] Windows can ping Kali (192.168.10.200)
-- [ ] Python HTTP server file transfer works (Kali to Windows)
-- [ ] SMB file transfer works (both directions)
+- [ ] Kali can ping target (192.168.10.100) and dev box (192.168.10.150)
+- [ ] Target can ping dev box (192.168.10.150) and Kali (192.168.10.200)
+- [ ] Dev box can ping target (192.168.10.100) and Kali (192.168.10.200)
+- [ ] Python HTTP server file transfer works (Kali to dev box)
+- [ ] Python HTTP server file transfer works (dev box to target)
+- [ ] SMB file transfer works (Kali to target)
 
 ## What Was Gained
 
 You now have a complete, isolated lab that mirrors a real red team engagement setup:
 
-- A Windows 11 target with production Defender settings, exactly what you would encounter on a real client machine. The Defender configuration matches what most organizations run because they use the default settings.
-- A Kali attacker machine with the tools needed to generate shellcode payloads (msfvenom), host files for transfer (python3 HTTP server), and interact with Windows file shares (smbclient).
+- A Windows 11 dev box (ammulu, 192.168.10.150) with Visual Studio 2022 and the .NET SDK. This is where you compile all loaders. On a real engagement, this is your operator workstation where you build your tools before deploying them.
+- A Windows 11 target (kimjongun, 192.168.10.100) with production Defender settings, exactly what you would encounter on a real client machine. The Defender configuration matches what most organizations run because they use the default settings. This machine only runs compiled binaries, just like a real target.
+- A Kali attacker machine (kali, 192.168.10.200) with the tools needed to generate shellcode payloads (msfvenom), host files for transfer (python3 HTTP server), and interact with Windows file shares (smbclient).
 - An isolated network where you can test aggressive techniques without affecting your real network or triggering alerts on systems outside the lab.
-- A working C# build toolchain (.NET SDK) that can compile the loaders you will build in Documents 05 through 10.
-- Snapshots of both VMs in their clean state so you can reset to a known-good configuration at any time.
+- Snapshots of all three VMs in their clean state so you can reset to a known-good configuration at any time.
 
-The file transfer setup means you can move files between the two machines quickly. Throughout the curriculum, the workflow is: generate shellcode on Kali, transfer it to Windows, compile the loader on Windows, run the loader, and observe whether Defender catches it. Having transfer working now means you will not waste time debugging network issues when you should be focusing on evasion.
+The file transfer setup means you can move files between all three machines quickly. Throughout the curriculum, the workflow is: generate shellcode on Kali, transfer it to the dev box, compile the loader on the dev box, transfer the compiled .exe and any encrypted shellcode to the target, run the loader on the target, and observe whether Defender catches it. This three-machine workflow is realistic. On a real engagement, you never compile malware on the target machine. You build on your own machine and deliver only the final binary.
 
 ## Common Threats and Variations
 

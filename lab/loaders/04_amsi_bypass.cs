@@ -41,10 +41,14 @@
 //   - Document: 08_amsi_bypass.md
 //
 // BUILD INSTRUCTIONS:
-//   csc /unsafe /out:amsi_bypass.exe 04_amsi_bypass.cs
+//   On Dev Box (ammulu, 192.168.10.150):
+//     csc /unsafe /out:amsi_bypass.exe 04_amsi_bypass.cs
 //
 // USAGE:
-//   amsi_bypass.exe
+//   1. Compile on Dev Box (ammulu).
+//   2. Transfer amsi_bypass.exe to Target (kimjongun, 192.168.10.100).
+//   3. Run on Target:
+//        amsi_bypass.exe
 //   (Then open PowerShell from the same context, or use this as a library
 //    to call PatchAmsi() before loading .NET assemblies)
 //

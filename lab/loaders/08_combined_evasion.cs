@@ -39,10 +39,14 @@
 //   - Document: 10_combined_evasion.md
 //
 // BUILD INSTRUCTIONS:
-//   csc /unsafe /out:stealth_loader.exe 08_combined_evasion.cs
+//   On Dev Box (ammulu, 192.168.10.150):
+//     csc /unsafe /out:stealth_loader.exe 08_combined_evasion.cs
 //
 // USAGE:
-//   stealth_loader.exe <encrypted_shellcode.bin> <xor_key_hex> [target_process]
+//   1. Compile on Dev Box (ammulu).
+//   2. Transfer stealth_loader.exe and encrypted.bin to Target (kimjongun, 192.168.10.100).
+//   3. Run on Target:
+//        stealth_loader.exe encrypted.bin <xor_key_hex> [target_process]
 //
 //   If target_process is specified, injects into that process (remote injection).
 //   If not specified, executes in the current process (local execution).

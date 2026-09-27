@@ -8,7 +8,7 @@ You finished Documents 02 and 03. You can:
 - Call Windows API functions from C# using DllImport and P/Invoke
 - Use VirtualAlloc, Marshal.Copy, VirtualProtect, and CreateThread
 
-Your lab is running with Windows 11 (Defender on, default settings) at 192.168.10.100 and Kali at 192.168.10.200.
+Your lab has three machines: dev box (ammulu, 192.168.10.150) for compiling, target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode and listeners. All coding in this document happens on the dev box.
 
 ## Why This Is Next
 
@@ -38,7 +38,7 @@ Windows solves both problems with a system called **virtual memory**.
 
 ### Virtual Memory: Every Program Gets Its Own Private Address Space
 
-Open Task Manager on your Windows VM (Ctrl+Shift+Esc). Click the Details tab. Look at the "Memory (private working set)" column. Add up the numbers for all running processes. The total is often more than the physical RAM your VM has. How?
+Open Task Manager on your dev box (Ctrl+Shift+Esc). Click the Details tab. Look at the "Memory (private working set)" column. Add up the numbers for all running processes. The total is often more than the physical RAM your VM has. How?
 
 Windows does not give programs direct access to the physical RAM chip. Instead, Windows creates a private address space for each program. This is called virtual memory.
 
@@ -56,7 +56,7 @@ Chrome stores data at virtual address 0x7FF00000. Notepad stores data at virtual
 
 Windows can take chunks of virtual memory that a program has not accessed recently and save them to a file on the hard drive called the **page file** (pagefile.sys). The physical RAM that held those chunks is now free for other programs. If the program tries to access that data again, Windows reads it back from the page file into physical RAM. This is called **paging**. It is slower, but it means programs can use more RAM than physically exists.
 
-You can see the page file right now. Open File Explorer on your Windows VM, go to C:\, and if hidden files are visible, you will see pagefile.sys.
+You can see the page file right now. Open File Explorer on your dev box, go to C:\, and if hidden files are visible, you will see pagefile.sys.
 
 ### What This Means for Shellcode
 
@@ -170,13 +170,13 @@ This document teaches foundational concepts. The evasion techniques that build o
 
 ## Getting the Loader Onto the Target
 
-No loader in this document. All programs are learning exercises that run on your Windows VM. They allocate and free RAM, change permissions, and demonstrate cross-process concepts. They do not contain or execute shellcode.
+No loader in this document. All programs are learning exercises that run on your dev box (ammulu, 192.168.10.150). They allocate and free RAM, change permissions, and demonstrate cross-process concepts. They do not contain or execute shellcode.
 
 ## Teaching the Code
 
 ### Part 1: Viewing Your Process's Memory Layout
 
-Before writing code, open Task Manager on your Windows VM. Click the Details tab. Find any running process and look at its memory column. Each process has its own separate RAM usage because each has its own virtual address space.
+Before writing code, open Task Manager on your dev box. Click the Details tab. Find any running process and look at its memory column. Each process has its own separate RAM usage because each has its own virtual address space.
 
 Here is a C# program that shows your own process's memory information:
 
@@ -1168,7 +1168,7 @@ After step 5, shellcode runs inside the target. Your loader can exit. The shellc
 
 For every example:
 
-1. On your Windows VM: `cd C:\Users\kimjongun\Desktop\CSharpLab\Lesson`
+1. On the dev box (ammulu): `cd C:\Users\ammulu\Desktop\CSharpLab\Lesson`
 2. Replace Program.cs with the example code
 3. Run: `dotnet run`
 4. For programs with arguments: `dotnet run -- explorer`
@@ -1236,4 +1236,4 @@ Blue team action: periodically scan pagefile.sys for known shellcode patterns.
 
 ## What Comes Next
 
-Document 05 (lab/materials/05_shellcode_loader.md) is where you build your first real working loader. You will generate shellcode with msfvenom on Kali, transfer it to the Windows VM, and build a C# program that executes it in RAM using the VirtualAlloc, Marshal.Copy, VirtualProtect, CreateThread pattern you have practiced. You will see Defender catch it, understand why, and learn what needs to change in Document 06 to bypass the detection.
+Document 05 (lab/materials/05_shellcode_loader.md) is where you build your first real working loader. You will generate shellcode with msfvenom on Kali, transfer it to the dev box, compile the loader on the dev box, transfer the compiled binary and shellcode to the target, and run it there. The loader uses the VirtualAlloc, Marshal.Copy, VirtualProtect, CreateThread pattern you have practiced. You will see Defender on the target catch it, understand why, and learn what needs to change in Document 06 to bypass the detection.

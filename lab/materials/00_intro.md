@@ -365,20 +365,20 @@ You do not need programming experience. Document 02 teaches C# from scratch. But
 - You have used Windows before (you know what Task Manager is, how to run programs from the command line)
 
 **Required hardware:**
-- A computer with at least 16 GB of RAM (two VMs run at the same time)
-- At least 100 GB free disk space
+- A computer with at least 24 GB of RAM (three VMs run at the same time)
+- At least 150 GB free disk space
 - A processor with virtualization support (Intel VT-x or AMD-V, nearly all modern CPUs have this)
 
 **Required software (installed in Document 01):**
 - VMware Workstation Pro (free for personal use)
 - Windows 11 Pro ISO (free from Microsoft)
 - Kali Linux ISO (free from kali.org)
-- Visual Studio 2022 Community (free, installed on the Windows VM)
+- Visual Studio 2022 Community (free, installed on the dev box VM)
 - .NET 6 SDK or later (installed with Visual Studio)
 
 ## Lab Environment
 
-The lab is two virtual machines on an isolated network:
+The lab is three virtual machines on an isolated network. This mirrors a real red team engagement where you have a separate machine for building your tools, a separate machine for generating payloads and running listeners, and the target machine where you test your tools against real defenses.
 
 ```
 Lab Network: 192.168.10.0/24
@@ -387,16 +387,22 @@ Lab Network: 192.168.10.0/24
       |
   [VMware Pro]
       |
-      +--- [Windows 11 VM: 192.168.10.100]
-      |      - Fully updated, all patches applied
-      |      - Defender ON: real-time scanning, cloud protection,
-      |        automatic updates, AMSI, ETW - everything at default
+      +--- [Dev Box: 192.168.10.150]
+      |      - Windows 11 Pro
       |      - Visual Studio 2022 Community installed
       |      - .NET 8 SDK (or latest)
-      |      - Username: kimjongun
-      |      - This is the TARGET machine where loaders run
+      |      - Username: ammulu
+      |      - This is where you COMPILE loaders. No testing here.
       |
-      +--- [Kali Linux VM: 192.168.10.200]
+      +--- [Target: 192.168.10.100]
+      |      - Windows 11 Pro, fully updated, all patches applied
+      |      - Defender ON: real-time scanning, cloud protection,
+      |        automatic updates, AMSI, ETW - everything at default
+      |      - No dev tools installed (no Visual Studio, no .NET SDK)
+      |      - Username: kimjongun
+      |      - This is the TARGET machine where loaders RUN
+      |
+      +--- [Kali Attacker: 192.168.10.200]
              - Latest Kali build
              - msfvenom (generates shellcode payloads)
              - python3 (hosts files for transfer via HTTP)
@@ -404,7 +410,9 @@ Lab Network: 192.168.10.0/24
              - This is the ATTACKER machine where payloads are created
 ```
 
-Defender stays enabled with default settings for the entire curriculum. You never disable it, never add exclusions, never weaken any setting.
+The workflow is: generate shellcode on Kali, transfer it to the dev box, compile the loader on the dev box, transfer the compiled binary and encrypted shellcode to the target, and run the loader on the target. This separation is realistic because in a real engagement you never compile your malware on the machine you are attacking.
+
+Defender stays enabled with default settings on the target machine for the entire curriculum. You never disable it, never add exclusions, never weaken any setting.
 
 ## Curriculum Structure (11 Documents)
 

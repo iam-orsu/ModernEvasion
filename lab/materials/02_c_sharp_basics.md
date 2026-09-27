@@ -2,13 +2,13 @@
 
 ## Where We Are
 
-You have a working lab from Document 01. Your Windows 11 VM has Visual Studio 2022 and the .NET SDK installed. Your Kali VM has msfvenom, python3, and smbclient. Both machines can ping each other on 192.168.10.0/24.
+You have a working lab from Document 01. Your dev box (ammulu, 192.168.10.150) has Visual Studio 2022 and the .NET SDK installed. Your target machine (kimjongun, 192.168.10.100) has Defender running at full defaults. Your Kali VM (192.168.10.200) has msfvenom, python3, and smbclient. All three machines can ping each other on 192.168.10.0/24.
 
 At this point you know:
 - Why C# is the language for Windows evasion (Document 00)
 - How Defender's 6 detection layers work (Document 00)
 - Your lab is running with Defender at full default settings (Document 01)
-- You can compile and run C# with `dotnet run` on the Windows VM
+- You can compile and run C# with `dotnet run` on the dev box
 
 You have zero C# programming experience. This document fixes that. By the end, you will understand every line of code in every loader this curriculum builds.
 
@@ -46,11 +46,11 @@ No loader exists yet. This applies from Document 05 onward.
 
 ### Setting Up Your Workspace
 
-Open a Command Prompt on the Windows VM:
+Open a Command Prompt on the dev box (ammulu, 192.168.10.150). All coding and compilation in this document happens on the dev box, not on the target machine:
 
 ```
-mkdir C:\Users\kimjongun\Desktop\CSharpLab
-cd C:\Users\kimjongun\Desktop\CSharpLab
+mkdir C:\Users\ammulu\Desktop\CSharpLab
+cd C:\Users\ammulu\Desktop\CSharpLab
 dotnet new console -n Lesson
 cd Lesson
 ```
@@ -1236,7 +1236,7 @@ The strings "AmsiScanBuffer", "kernel32.dll", and "ntdll" exist only when the pr
 
 For every example in this document:
 
-1. Open the Lesson folder: `cd C:\Users\kimjongun\Desktop\CSharpLab\Lesson`
+1. Open the Lesson folder on the dev box: `cd C:\Users\ammulu\Desktop\CSharpLab\Lesson`
 2. Edit Program.cs with the example code
 3. Run: `dotnet run`
 4. For programs that use command-line arguments: `dotnet run -- arg1 arg2 arg3`

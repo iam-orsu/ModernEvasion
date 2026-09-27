@@ -4,7 +4,7 @@
 
 You finished Document 02 and can write C# programs that store data in variables, make decisions with if/else, loop through arrays, create byte arrays, write functions, XOR-encrypt data, read files, parse command-line arguments, use Marshal.Copy, and build strings from integer offsets.
 
-Your lab is running with Windows 11 (Defender on, default settings), Kali Linux, and both machines on 192.168.10.0/24.
+Your lab has three machines on 192.168.10.0/24: the dev box (ammulu, 192.168.10.150) where you compile code, the target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode generation and listeners. All coding in this document happens on the dev box.
 
 ## Why This Is Next
 
@@ -24,11 +24,11 @@ RAM is where programs actually run. When you double-click Chrome on your desktop
 
 Now here is the important part for us. When you close Chrome, whatever was in RAM is gone. RAM is temporary. Everything stored in RAM disappears when you shut down your computer. Defender's file scanner checks files on your hard drive, but data sitting in RAM does not get checked by the file scanner. This is why we run shellcode in RAM instead of saving it as a file on the hard drive.
 
-Open Task Manager on your Windows VM (press Ctrl+Shift+Esc), click the Performance tab, and you can see how much RAM your system is using right now. That is real programs sitting in real RAM.
+Open Task Manager on your dev box (press Ctrl+Shift+Esc), click the Performance tab, and you can see how much RAM your system is using right now. That is real programs sitting in real RAM.
 
 ### What Windows Does When You Use Your Computer
 
-Right now on your Windows VM, dozens of things are happening. Explorer is showing your desktop, Defender is scanning in the background, the taskbar clock is updating every minute, your mouse cursor is moving around. None of these programs handle all of this by themselves. They all ask Windows to do the work.
+Right now on your dev box, dozens of things are happening. Explorer is showing your desktop, Defender is scanning in the background, the taskbar clock is updating every minute, your mouse cursor is moving around. None of these programs handle all of this by themselves. They all ask Windows to do the work.
 
 When you double-click a .exe file on your desktop, Windows copies that program from the hard drive into RAM, creates a new process for it, and starts running it. When the program wants to show a window on screen, it asks Windows to create the window. Windows draws the title bar, the close button, the minimize button, and the window border.
 
@@ -65,7 +65,7 @@ Both cases are the same idea: you ask a system to do work for you by calling a f
 
 Windows has thousands of API functions. They are organized into files called **DLLs**. DLL stands for Dynamic Link Library. A DLL is a file on your hard drive that contains a collection of compiled functions that any program can call.
 
-You can see these files right now. Open File Explorer on your Windows VM and go to `C:\Windows\System32\`. You will see hundreds of .dll files. Each file contains a group of related functions.
+You can see these files right now. Open File Explorer on your dev box and go to `C:\Windows\System32\`. You will see hundreds of .dll files. Each file contains a group of related functions.
 
 The four DLLs that matter for this curriculum:
 
@@ -129,7 +129,7 @@ All of them build on the standard calling pattern you learn here.
 
 ## Getting the Loader Onto the Target
 
-No loader in this document. All programs are learning exercises that run on your Windows VM.
+No loader in this document. All programs are learning exercises that run on your dev box (ammulu, 192.168.10.150).
 
 ## Teaching the Code
 
@@ -223,7 +223,7 @@ class Program
 }
 ```
 
-Run it with `dotnet run`. A dialog box appears on your Windows VM. It has a title bar that says "Windows API Test," your message text, and two buttons. Click one. The terminal prints which button you clicked.
+Run it with `dotnet run`. A dialog box appears on your dev box. It has a title bar that says "Windows API Test," your message text, and two buttons. Click one. The terminal prints which button you clicked.
 
 Your C# code did not draw the dialog box. It did not create the buttons. It did not detect your mouse click. Windows did all of that. Your code told Windows "show a dialog with this text and these buttons" and Windows handled everything else. That is what calling a Windows API function means.
 
@@ -279,9 +279,9 @@ Run it. You hear three tones. The pattern is always the same: write `[DllImport(
 
 MessageBox and Beep tell Windows to do something. Windows API functions can also give you information about the system.
 
-Right now on your Windows VM, there are dozens of programs running at the same time. Chrome, Explorer, Defender, background services, all running together. Windows needs to know which program is which. So every time a program starts, Windows gives it a unique number. This number is called a process ID, written as PID for short. Chrome might get 4528, Notepad might get 7812, Explorer might get 1340. No two running programs ever get the same PID.
+Right now on your dev box, there are dozens of programs running at the same time. Chrome, Explorer, Defender, background services, all running together. Windows needs to know which program is which. So every time a program starts, Windows gives it a unique number. This number is called a process ID, written as PID for short. Chrome might get 4528, Notepad might get 7812, Explorer might get 1340. No two running programs ever get the same PID.
 
-You can see this right now. Press Ctrl+Shift+Esc on your Windows VM to open Task Manager. If it opens in the small view, click "More details" at the bottom. Now right-click on the column headers at the top and turn on the PID column. Every program on that list has a number next to it, and that number is the PID that Windows assigned when the program started.
+You can see this right now. Press Ctrl+Shift+Esc on your dev box to open Task Manager. If it opens in the small view, click "More details" at the bottom. Now right-click on the column headers at the top and turn on the PID column. Every program on that list has a number next to it, and that number is the PID that Windows assigned when the program started.
 
 When we write code that needs to interact with another running program, like injecting shellcode into explorer.exe, we need to know that program's PID so we can tell Windows exactly which program we are referring to.
 
@@ -1026,7 +1026,7 @@ Document 05 builds the first real working loader using this pattern.
 
 For every example:
 
-1. Open `cd C:\Users\kimjongun\Desktop\CSharpLab\Lesson`
+1. On the dev box, open `cd C:\Users\ammulu\Desktop\CSharpLab\Lesson`
 2. Replace Program.cs with the example code
 3. Run: `dotnet run`
 4. For programs with arguments: `dotnet run -- notepad`

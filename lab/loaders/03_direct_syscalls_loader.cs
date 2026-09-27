@@ -40,10 +40,14 @@
 //   - Document: 07_direct_syscalls.md
 //
 // BUILD INSTRUCTIONS:
-//   csc /unsafe /out:syscall_loader.exe 03_direct_syscalls_loader.cs
+//   On Dev Box (ammulu, 192.168.10.150):
+//     csc /unsafe /out:syscall_loader.exe 03_direct_syscalls_loader.cs
 //
 // USAGE:
-//   syscall_loader.exe <path_to_xor_encrypted_shellcode.bin> <xor_key_hex>
+//   1. Compile on Dev Box (ammulu).
+//   2. Transfer syscall_loader.exe and encrypted.bin to Target (kimjongun, 192.168.10.100).
+//   3. Run on Target:
+//        syscall_loader.exe encrypted.bin <xor_key_hex>
 //
 //   This loader expects XOR-encrypted shellcode (from Loader 02's encoder).
 //   It decrypts at runtime and uses syscalls to allocate and execute.
