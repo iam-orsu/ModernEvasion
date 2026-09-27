@@ -212,10 +212,10 @@ The parameters match the NT function signature:
 
 - `ProcessHandle`: which process to allocate memory in. `-1` (cast to IntPtr) means the current process.
 - `BaseAddress`: passed by reference (`ref`). You pass IntPtr.Zero and the function fills in the actual allocated address.
-- `ZeroBits`: normally IntPtr.Zero. Controls how many high-order bits must be zero in the address.
-- `RegionSize`: passed by reference. You pass the size you want, and the function may adjust it to a page boundary.
-- `AllocationType`: MEM_COMMIT | MEM_RESERVE (same as VirtualAlloc).
-- `Protect`: PAGE_READWRITE first (0x04), changed to PAGE_EXECUTE_READ (0x20) later.
+- `ZeroBits`: pass IntPtr.Zero. This parameter exists for very specialized cases where a program needs its memory allocated in a specific part of the address space (it controls the upper range of allowed addresses). For all loaders in this curriculum you always pass zero, which means "no restriction, anywhere in the address space is fine."
+- `RegionSize`: passed by reference with the `ref` keyword. You pass in the size you want (say, 4096 bytes), and the function fills it back in with the actual size it allocated. The actual size may be slightly larger because Windows always allocates memory in page-sized chunks (4096 bytes). If you ask for 500 bytes, Windows still gives you 4096.
+- `AllocationType`: MEM_COMMIT | MEM_RESERVE (0x3000). Same meaning as with VirtualAlloc. MEM_RESERVE sets aside the address range, MEM_COMMIT assigns real physical RAM from the machine's chip to back those addresses.
+- `Protect`: PAGE_READWRITE (0x04) at first, which allows reading and writing but blocks execution. After writing shellcode into the memory, this changes to PAGE_EXECUTE_READ (0x20) so the CPU can run the code but nothing can write into it anymore.
 
 ```csharp
 [UnmanagedFunctionPointer(CallingConvention.StdCall)]
@@ -258,7 +258,7 @@ delegate int WaitObjectDelegate(
 );
 ```
 
-This is NtWaitForSingleObject. It waits for the thread to finish. `Timeout` of IntPtr.Zero means wait forever. `Alertable` is false because we do not need the thread to respond to APCs (asynchronous procedure calls).
+This is NtWaitForSingleObject. It waits for the thread to finish. `Timeout` of IntPtr.Zero means wait forever. `Alertable` is false. An alertable wait means the thread can be interrupted mid-wait to handle other work (called an APC, asynchronous procedure call, which is a mechanism for scheduling a function to run in a specific thread). We do not need that here. Setting this to false means the thread sleeps uninterrupted until either the timeout expires or the handle is signaled. You will see APCs used in Document 09 for a different injection technique.
 
 ### The Legitimate DllImport Lines
 

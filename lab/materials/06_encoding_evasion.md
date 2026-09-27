@@ -197,9 +197,9 @@ const uint MEM_RESERVE = 0x2000;
 const uint PAGE_EXECUTE_READWRITE = 0x40;
 ```
 
-MEM_COMMIT (0x1000) tells Windows to assign physical memory pages. MEM_RESERVE (0x2000) tells Windows to reserve the address range first. When you combine them with `MEM_COMMIT | MEM_RESERVE`, Windows does both steps at once.
+MEM_RESERVE (0x2000) tells Windows to set aside a block of virtual addresses for your program so nothing else can use them. No physical RAM is assigned yet, just the address range is reserved. MEM_COMMIT (0x1000) is where physical RAM actually gets used. Your target VM (kimjongun) has 8 GB of RAM on its motherboard. When you pass MEM_COMMIT, Windows takes a portion of that physical 8 GB and dedicates it to your program. If you commit 4096 bytes, those 4096 bytes of the RAM chip are now yours. When you combine them with `MEM_COMMIT | MEM_RESERVE` (which gives 0x3000), Windows does both steps at once: reserves the addresses and backs them with real RAM.
 
-PAGE_EXECUTE_READWRITE (0x40) is the permission flag. It means the allocated memory can be read, written, and executed. This flag is suspicious because normal programs do not need memory that is executable and writable at the same time. Document 05 showed a variation using two-step allocation (allocate as RW, write data, change to RX) which avoids this flag, but Loader 02 uses 0x40 for simplicity.
+PAGE_EXECUTE_READWRITE (0x40) is the permission flag. It tells the CPU what operations are allowed on this memory. With 0x40, the CPU can read data from these pages, your program can write data into them, and the CPU can run the bytes as machine instructions. Normal programs almost never need memory that is both writable and executable at the same time because legitimate code is loaded from a file (execute-only) and data is stored separately (read-write only). When Defender sees a program allocating memory with 0x40, that is a strong signal that the program might be loading code into memory at runtime, which is exactly what a shellcode loader does. Document 05 showed a variation using two-step allocation (allocate as RW with 0x04, write data, then change to RX with 0x20) which avoids this flag, but Loader 02 uses 0x40 for simplicity because its evasion comes from the XOR encryption, not from memory permission tricks.
 
 ### The XOR Function
 

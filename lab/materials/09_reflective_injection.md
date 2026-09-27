@@ -385,7 +385,9 @@ struct STARTUPINFO
 
 STARTUPINFO is a Windows structure that tells CreateProcess how the new process's window should look. It has many fields, but for our purposes, we set them all to their default values (zeros). The only field we set is `cb` (the structure's size in bytes), which CreateProcess requires.
 
-The `[StructLayout(LayoutKind.Sequential)]` attribute tells C# to lay out the structure's fields in memory in the exact order they are declared. This is required because Windows expects the structure in a specific memory layout, and C# normally rearranges fields for efficiency.
+The `[StructLayout(LayoutKind.Sequential)]` attribute tells C# to place the structure's fields in memory in exactly the order they are declared, field by field, one after another. This matters because Windows looks at specific byte offsets to find specific values. For example, Windows knows that the process ID is at byte offset 8 inside PROCESS_INFORMATION. If C# decided to reorder or rearrange the fields to make memory access faster (which it sometimes does automatically), the bytes would be at different positions and Windows would read garbage values.
+
+By default C# can rearrange struct fields for alignment reasons. Alignment is about placing data at memory addresses that are multiples of the data size, because CPUs read aligned data faster. A 4-byte integer loads fastest when it starts at an address divisible by 4. C# might insert padding bytes between fields or reorder them to achieve this. `LayoutKind.Sequential` turns off that optimization and says "the layout I wrote is the layout I need."
 
 ```csharp
 [StructLayout(LayoutKind.Sequential)]

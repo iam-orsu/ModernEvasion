@@ -93,21 +93,31 @@ Both patches use the exact same technique. You already learned the building bloc
 4. Overwrite the first few bytes of the function with new instructions that make it return immediately with a harmless result.
 5. Restore the original memory protection using VirtualProtect again. This is cleanup so there is less evidence of tampering.
 
-The difference between the two patches is what bytes you write:
+The difference between the two patches is what bytes you write. Before reading those bytes, you need to understand what they are.
+
+When your program calls a Windows function, the CPU executes the machine code inside that function. Machine code is raw bytes that the CPU reads and acts on. Each byte or group of bytes is one instruction. A CPU instruction is a single operation like "add two numbers" or "jump to a different address" or "return from this function."
+
+The CPU has small storage locations inside the chip itself called registers. A register is not RAM. It is inside the CPU, directly accessible, and holds a single value that the CPU works with. The register relevant here is called `eax`. When a function returns a value to its caller, that value is placed in `eax`. So when EtwEventWrite finishes and returns to the caller that called it, the caller reads the result from `eax`. If `eax` is zero, the caller sees that as STATUS_SUCCESS (meaning "everything worked fine"). If `eax` contains 0x80070057, the caller sees E_INVALIDARG (meaning "bad input argument").
+
+`xor eax, eax` is an instruction that takes the value in `eax` and XORs it with itself. Any value XOR'd with itself equals zero. So `xor eax, eax` sets `eax` to zero. Hackers prefer this over `mov eax, 0` because it produces fewer bytes in machine code (2 bytes instead of 5) and does not leave obvious constant values in the binary for scanners to find.
+
+`mov eax, 0x80070057` is an instruction that puts the value 0x80070057 directly into `eax`. It overwrites whatever was there before with this specific number.
+
+`ret` is the return instruction. It ends the function and jumps back to wherever the function was called from. The caller then reads `eax` to see what the function returned.
 
 **ETW patch (EtwEventWrite):**
 ```
 33 C0    xor eax, eax    (set eax to 0, which is STATUS_SUCCESS)
 C3       ret             (return from the function)
 ```
-Three bytes. After the patch, every call to EtwEventWrite returns STATUS_SUCCESS immediately. The calling code thinks the event was written, but nothing happened.
+Three bytes total. After the patch, every call to EtwEventWrite immediately returns zero (STATUS_SUCCESS) without doing anything. The caller (the part of Windows that logs telemetry events) reads `eax`, sees zero, thinks everything went fine, and moves on. The event is never actually written.
 
 **AMSI patch (AmsiScanBuffer):**
 ```
 B8 57 00 07 80    mov eax, 0x80070057    (set eax to E_INVALIDARG)
 C3                ret                    (return from the function)
 ```
-Six bytes. After the patch, every call to AmsiScanBuffer returns E_INVALIDARG immediately. The calling code (PowerShell, .NET CLR) treats an error return as "scan failed, allow content".
+Six bytes total. After the patch, every call to AmsiScanBuffer immediately returns 0x80070057 (E_INVALIDARG) without scanning anything. PowerShell and the .NET CLR call AmsiScanBuffer and read `eax`. When they see E_INVALIDARG, their code treats it as "the scan failed, not a successful detection" and allows the content to run.
 
 ## What Defender Does
 

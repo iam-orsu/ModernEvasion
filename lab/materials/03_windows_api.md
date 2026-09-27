@@ -402,7 +402,7 @@ The four parameters:
 
 `uint dwSize` is how many bytes of RAM you want. If your shellcode is 510 bytes, you request 510 bytes.
 
-`uint flAllocationType` is the type of request. The value `0x3000` means "reserve the address range so nothing else uses it AND prepare the RAM pages for use." This is a combination of two flags: MEM_RESERVE (0x2000) which reserves the address range, and MEM_COMMIT (0x1000) which prepares the actual RAM pages. You combine them by adding: 0x2000 + 0x1000 = 0x3000. You use this value in every loader.
+`uint flAllocationType` is the type of request. The value `0x3000` combines two flags. MEM_RESERVE (0x2000) tells Windows to set aside a range of virtual addresses for your program so nothing else can claim those addresses. At this point no physical RAM is used yet. MEM_COMMIT (0x1000) is where real RAM gets involved. Your dev box (ammulu) has 8 GB of RAM on its motherboard. When you pass MEM_COMMIT, Windows takes a portion of that physical 8 GB and assigns it to your program. If you ask for 4096 bytes, Windows dedicates 4096 bytes of that RAM chip to you. Those bytes are now yours to read and write. You combine both flags by adding: 0x2000 + 0x1000 = 0x3000, and you use this value in every loader because you always want both steps done at once.
 
 `uint flProtect` sets the permissions. This is the most important parameter:
 

@@ -152,10 +152,10 @@ The loader needs three Windows functions. You declare them with DllImport so C# 
 
 **VirtualAlloc** asks Windows to give you a block of RAM. You learned this in Documents 03 and 04. The parameters:
 
-- `lpAddress`: where to allocate. IntPtr.Zero means "let Windows choose"
-- `dwSize`: how many bytes you need
-- `flAllocationType`: MEM_COMMIT | MEM_RESERVE (0x3000) means actually assign physical RAM
-- `flProtect`: the page permission. We use 0x04 (read-write) first
+- `lpAddress`: the starting address where you want Windows to put the memory. IntPtr.Zero means "I do not care where, you pick an available spot." Windows knows which addresses are free, so letting it choose is the safest option.
+- `dwSize`: how many bytes of RAM you need. If your shellcode is 510 bytes, you ask for 510.
+- `flAllocationType`: MEM_COMMIT | MEM_RESERVE (0x3000). MEM_RESERVE tells Windows to set aside a range of addresses so nothing else uses them. MEM_COMMIT tells Windows to back those addresses with actual physical RAM from the 8 GB chip in your target VM. Combined, Windows does both in one call.
+- `flProtect`: the page permission that controls what the CPU can do with this memory. We use 0x04 (PAGE_READWRITE) first, which means the program can read and write data there but the CPU cannot execute code from it.
 
 It returns an IntPtr, which is the memory address where Windows put your block. If it returns IntPtr.Zero, the allocation failed.
 
@@ -191,11 +191,15 @@ It returns an IntPtr, which is the memory address where Windows put your block. 
         const uint PAGE_EXECUTE_READWRITE = 0x40;
 ```
 
-These are the values you pass to VirtualAlloc. `const` means the value never changes.
+These are the values you pass to VirtualAlloc. `const` means the value never changes throughout the program.
 
-- `MEM_COMMIT` (0x1000): actually assign physical RAM to the pages
-- `MEM_RESERVE` (0x2000): reserve the address range so nothing else can use it
-- `PAGE_EXECUTE_READWRITE` (0x40): the pages can be read, written to, and executed
+`MEM_RESERVE` (0x2000) tells Windows to set aside a range of virtual addresses for your program. Think of it this way: your target VM (kimjongun) has 8 GB of RAM on its motherboard. That 8 GB is shared between every program running on the machine. When you pass MEM_RESERVE, you are telling Windows "I need a block of addresses, mark them as mine so no other part of my program or the system gives them to someone else." At this point, no physical RAM is actually used yet. Windows just writes down that those addresses belong to you.
+
+`MEM_COMMIT` (0x1000) is the step where Windows actually assigns real physical RAM. Your target VM has that 8 GB RAM chip. When you pass MEM_COMMIT, Windows takes a portion of that physical RAM and dedicates it to your program. If you commit 4096 bytes, Windows sets aside 4096 bytes of that 8 GB chip for you. Those bytes are now yours to read from and write to. Other programs cannot touch them.
+
+When you combine both flags with `MEM_COMMIT | MEM_RESERVE` (which gives 0x3000), Windows does both steps at once: it reserves the address range and assigns real RAM in a single call. Every loader in this curriculum uses 0x3000 for this reason.
+
+`PAGE_EXECUTE_READWRITE` (0x40) sets the permissions on the memory pages. It means the CPU can read data from these pages, your program can write data into these pages, and the CPU can execute the bytes in these pages as machine instructions. This last part (execute) is what makes shellcode work. Without execute permission, the CPU refuses to run your shellcode and crashes your program with an access violation.
 
 **Note:** This basic loader uses 0x40 (all permissions at once), which is the suspicious pattern you learned about in Document 04. Later loaders use the two-step approach (0x04 first, then 0x20) to avoid this detection.
 
