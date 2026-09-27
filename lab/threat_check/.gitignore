@@ -2,5 +2,3 @@
 rules/signature-base/
 rules/protections-artifacts/
 
-# Compiled binaries - rebuild with dotnet build
-compiled/
