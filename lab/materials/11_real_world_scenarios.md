@@ -12,7 +12,7 @@ You finished Documents 00 through 10. You have built eight loaders and learned s
 | Loader 04 | AMSI bypass (AmsiScanBuffer patch) | Low detection standalone |
 | Loader 05 | Remote thread injection | Caught alone |
 | Loader 06 | Early Bird APC injection | Caught alone |
-| Loader 07 | ETW patch (EtwEventWrite patch) | Low detection standalone |
+| Loader 07 | ETW patch (NtTraceEvent patch) | Low detection standalone |
 | Loader 08 | All techniques combined | Fully stealthy (no detection) |
 
 You can now compile C# loaders, encrypt shellcode, patch system functions, resolve APIs dynamically, inject into other processes, and bypass Defender's six detection layers. This document explains how these techniques work in real red team engagements, what changes when you face security products beyond Defender, and what the current evasion landscape looks like.

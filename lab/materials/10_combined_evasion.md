@@ -10,7 +10,7 @@ You finished Documents 05 through 09. You have built seven loaders:
 - **Loader 04** (Document 08): AMSI bypass. Patches AmsiScanBuffer to disable script scanning.
 - **Loader 05** (Document 09): Remote thread injection into a running process. Caught by Defender alone.
 - **Loader 06** (Document 09): Early Bird APC injection into a suspended process. Caught by Defender alone.
-- **Loader 07** (Document 08): ETW patch. Patches EtwEventWrite to stop telemetry.
+- **Loader 07** (Document 08): ETW patch. Patches NtTraceEvent to stop telemetry.
 
 Each loader teaches one or two techniques. Each technique defeats one or two of Defender's detection layers. But no single technique defeats all six layers. This document combines everything into Loader 08, the final loader that addresses all six detection layers in the correct order and gives you a fully stealthy callback with Defender at full defaults.
 
@@ -22,7 +22,7 @@ Your C# knowledge at this point:
 - Building strings from integer offsets, building bytes from arithmetic
 - XOR encryption and decryption
 - NT-level functions: NtAllocateVirtualMemory, NtProtectVirtualMemory, NtCreateThreadEx, NtWaitForSingleObject, NtWriteVirtualMemory
-- Patching system functions (AmsiScanBuffer, EtwEventWrite)
+- Patching system functions (AmsiScanBuffer, NtTraceEvent)
 - Cross-process operations: OpenProcess, VirtualAllocEx, WriteProcessMemory, CreateRemoteThread
 - APC queuing: CreateProcess(SUSPENDED), QueueUserAPC, ResumeThread
 
@@ -182,7 +182,7 @@ Write down the printed XOR key.
 
 Compile Loader 08:
 ```
-csc /unsafe /out:stealth_loader.exe 08_combined_evasion.cs
+dotnet publish Loader08 -c Release -r win-x64 --self-contained false /p:PublishSingleFile=true -o output/
 ```
 
 Host stealth_loader.exe and encrypted.bin on the dev box:
@@ -583,7 +583,7 @@ Save the printed XOR key.
 On the dev box (ammulu, 192.168.10.150), open the Developer Command Prompt for Visual Studio 2022:
 
 ```
-csc /unsafe /out:stealth_loader.exe 08_combined_evasion.cs
+dotnet publish Loader08 -c Release -r win-x64 --self-contained false /p:PublishSingleFile=true -o output/
 ```
 
 Expected output: the compiler produces stealth_loader.exe with no errors.

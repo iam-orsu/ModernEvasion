@@ -18,7 +18,7 @@ Your C# knowledge at this point:
 - GetModuleHandle, GetProcAddress, LoadLibrary for dynamic function resolution
 - Building strings and bytes from arithmetic to avoid static signatures
 - XOR encryption and decryption
-- Patching system functions (AmsiScanBuffer, EtwEventWrite) by overwriting their first bytes
+- Patching system functions (AmsiScanBuffer, NtTraceEvent) by overwriting their first byte
 
 Your lab has three machines: dev box (ammulu, 192.168.10.150) for compiling (Defender disabled), target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode and listeners.
 
@@ -155,11 +155,25 @@ For both loaders, you need:
 
 3. **Target (kimjongun, 192.168.10.100):** Download the files from the dev box and run them.
 
-Compile on the dev box (ammulu):
+Compile on the dev box (ammulu). First create a project for Loader 05:
 ```
-csc /unsafe /out:reflective_inject.exe 05_reflective_injector.cs
-csc /unsafe /out:earlybird.exe 06_process_hollowing_alt.cs
+dotnet new console -n Loader05
 ```
+Replace `Loader05\Program.cs` with the code from `05_reflective_injector.cs`, then publish:
+```
+dotnet publish Loader05 -c Release -r win-x64 --self-contained false /p:PublishSingleFile=true -o output05/
+```
+The binary is at `output05\Loader05.exe`.
+
+Create a second project for Loader 06:
+```
+dotnet new console -n Loader06
+```
+Replace `Loader06\Program.cs` with the code from `06_process_hollowing_alt.cs`, then publish:
+```
+dotnet publish Loader06 -c Release -r win-x64 --self-contained false /p:PublishSingleFile=true -o output06/
+```
+The binary is at `output06\Loader06.exe`.
 
 Host on the dev box (ammulu):
 ```

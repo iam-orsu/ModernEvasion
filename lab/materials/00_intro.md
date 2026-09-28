@@ -48,9 +48,9 @@ If your payload never touches the hard drive, Defender's file scanner never sees
 
 When you compile a C# program, it does not produce machine code like C or Rust. It produces something called **MSIL** (Microsoft Intermediate Language), which is a set of instructions that the .NET runtime converts to machine code when the program actually runs. This conversion is called **JIT** (Just-In-Time compilation).
 
-Because your compiled binary contains MSIL and not machine code, it also contains **metadata**: class names, method names, string literals, and type information. All of this metadata is readable text sitting in the compiled file.
+Because your compiled binary contains MSIL and not machine code, it also contains **metadata**: class names, method names, string literals, and type information. All of this metadata is readable text sitting in the .exe file on your hard drive. You can open the compiled .exe in Notepad right now and you will literally see your class names, function names, and every quoted string sitting there as readable text inside all the garbage characters.
 
-Defender and other security products scan this metadata. If your class is named "ShellcodeInjector" and your method is named "InjectMalware", those strings are sitting in plain text in the compiled binary. Understanding how .NET metadata works and how to control what ends up in your binary is a critical evasion skill.
+Defender opens that .exe file, reads the whole thing from start to end, and checks whether any of those names or strings match something in its database of known bad names. If your class is named "ShellcodeInjector" and your method is named "InjectMalware", Defender finds those words and flags the file. Understanding how .NET metadata works and how to control what ends up in your binary is a critical evasion skill.
 
 ### The Job Market Demands C#
 
@@ -216,7 +216,7 @@ AMSI is loaded into every program that uses .NET, PowerShell, VBScript, or JavaS
 
 This loader patches AmsiScanBuffer in RAM by overwriting its first few bytes with instructions that immediately return a "clean" result without actually scanning anything.
 
-The function names ("AmsiScanBuffer", "amsi.dll") are not stored as plain text in the compiled binary. They are built at runtime using integer math, so Defender's static scanner cannot find them.
+The function names ("AmsiScanBuffer", "amsi.dll") are not stored as plain text in the .exe file on your hard drive. You can open that compiled .exe in Notepad and you will NOT see "AmsiScanBuffer" anywhere in the file. Instead, those names are built at runtime from integer arithmetic, assembled character by character in RAM only when the program runs. Defender's file scanner reads the .exe on your hard drive and finds nothing to match against.
 
 What you learn:
 
@@ -313,7 +313,7 @@ This is the final loader. It combines every technique from Loaders 01 through 07
 5. **Two-step RAM allocation** - request RAM as read-write first, write the shellcode, then change permissions to execute-read (avoids having RAM that is both writable and executable)
 6. **Execute** - run the shellcode using NtCreateThreadEx for local execution, or write it into another program for injection
 
-Every function name that would normally appear in the compiled binary's import table is found while the program runs instead. The compiled binary uses neutral names. All text output uses generic terms instead of evasion terminology.
+Every function name that would normally appear in the compiled binary's import table is found while the program runs instead. You can open the compiled .exe in Notepad and the import table shows only neutral function names — the real Windows function names like "NtAllocateVirtualMemory" and "NtCreateThreadEx" are never written into the file on your hard drive. All text output uses generic terms instead of evasion terminology.
 
 What you learn:
 

