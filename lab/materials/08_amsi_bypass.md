@@ -2,37 +2,39 @@
 
 ## Where We Are
 
-You finished Documents 05, 06, and 07. You have built three loaders:
+You finished Documents 05, 06, and 07. You have built three loaders that all survive Defender:
 
-- **Loader 01** (Document 05): Raw shellcode loaded via DllImport. Defender caught it because the shellcode bytes matched known signatures and the import table showed suspicious API imports.
-- **Loader 02** (Document 06): XOR-encrypted shellcode decrypted at runtime. The encrypted file survived disk scanning, but the loader binary still got caught because it uses the same DllImport pattern.
-- **Loader 03** (Document 07): Dynamic resolution via GetProcAddress, NT-level functions via delegates, two-step memory allocation, XOR-encrypted shellcode. This was the first loader that survived Defender and gave you a callback.
+- **Loader 01** (Document 05): Raw shellcode embedded via DllImport. Survives Defender with default settings. The XOR encoding keeps static signatures below the detection threshold.
+- **Loader 02** (Document 06): XOR-encrypted shellcode decrypted at runtime with two-step memory allocation. Survives Defender. Confirmed with a Meterpreter callback on the target.
+- **Loader 03** (Document 07): Indirect syscall stubs (FindSyscallGadget + BuildStub), embedded XOR-encoded shellcode, two-step RW-then-RX allocation. Fully bypasses ntdll API hooks. Confirmed working on target with Defender fully active.
 
 Your C# knowledge at this point:
 
 - DllImport, P/Invoke, calling Windows API functions from C#
-- VirtualAlloc, Marshal.Copy, VirtualProtect, CreateThread
-- Delegates, generic methods, unmanaged function pointers
+- VirtualAlloc, Marshal.Copy, CreateThread, NtAllocateVirtualMemory, NtCreateThreadEx
+- Delegates and unmanaged function pointers via Marshal.GetDelegateForFunctionPointer
 - GetModuleHandle, GetProcAddress for dynamic function resolution
 - Building strings from integer offsets to hide function names from static scanners
-- Two-step memory allocation (RW then RX)
-- XOR encryption and decryption of shellcode
+- Two-step memory allocation (RW then RX) via NtProtectVirtualMemory
+- XOR encryption and in-binary embedded shellcode
+- FindSyscallGadget: scanning ntdll for the 0F 05 C3 (syscall; ret) bytes
+- BuildStub: writing 22-byte indirect syscall stubs that jump past ntdll hooks
 
 Your lab has three machines: dev box (ammulu, 192.168.10.150) for compiling (Defender disabled), target (kimjongun, 192.168.10.100) with Defender at full defaults, and Kali (192.168.10.200) for shellcode and listeners.
 
 ## Why This Is Next
 
-Loader 03 gave you a callback, but it left three detection layers active on the target:
+Loader 03 gave you a callback, but two detection layers are still active on the target:
 
-1. **ETW (Event Tracing for Windows)** is still logging every API call your loader makes. Every time Loader 03 calls NtAllocateVirtualMemory or NtCreateThreadEx, ETW writes a log entry describing what happened. Defender reads these log entries in real time. Right now Loader 03 survives because the overall pattern scores below Defender's detection threshold, but if Defender's threshold is lowered (through a signature update or a more sensitive policy), those ETW logs become the evidence that gets you caught.
+1. **ETW (Event Tracing for Windows)** is still logging activity. Every time Loader 03 calls NtAllocateVirtualMemory or NtCreateThreadEx through its indirect syscall stubs, the Windows kernel still generates ETW events for those operations. Loader 03 survives because the overall behavioral score stays below Defender's threshold, but ETW is actively recording what your process does. A more sensitive policy, or a commercial EDR that uses ETW more aggressively, will catch those event sequences.
 
-2. **AMSI (Antimalware Scan Interface)** is still scanning .NET code at runtime. When the .NET runtime loads your compiled C# binary, AMSI checks the managed code before it runs. Loader 03 survived this check because its managed code does not contain any obviously malicious patterns (no suspicious strings, no shellcode bytes in managed memory). But AMSI is a risk because it could catch future loaders that do more complex things in managed code, and it would definitely catch any PowerShell scripts you try to run after getting access.
+2. **AMSI (Antimalware Scan Interface)** is still scanning .NET code at runtime. Loader 03 survived because its managed code has no malicious patterns. But if you want to run PowerShell commands or load additional .NET tools after getting access, AMSI will inspect those and can block them.
 
-3. **API hooks** in ntdll.dll are still present. Loader 03 calls through the hooked functions but its call pattern does not trigger detection. This is luck as much as technique. A more aggressive EDR configuration would catch the calls.
+Loader 03's indirect syscall stubs already fully defeat API hook inspection (covered in Document 07). This document addresses the remaining two gaps.
 
-This document teaches you how to disable two of those three layers: ETW and AMSI. You will learn Loader 07 (ETW patch) first and then Loader 04 (AMSI patch). The order matters because patching AMSI generates ETW events. If you patch AMSI first, Defender sees an ETW log entry saying "process X modified amsi.dll memory" and that is suspicious. If you patch ETW first, the logging system is already dead when you patch AMSI, so no log entry is generated.
+You will learn Loader 07 (ETW patch) first and then Loader 04 (AMSI bypass). The order matters because patching AMSI generates ETW events that describe what was modified. If you patch ETW first, the logging system is already silenced when you then patch AMSI, so no event is generated and Defender does not know AMSI was touched.
 
-After this document, you will have two utility loaders that you can call before executing shellcode. Document 10 combines these patches with the shellcode execution from Loader 03 into a single binary.
+After this document, you will have two utility loaders. Document 10 combines both patches with Loader 03's shellcode execution into a single binary that patches ETW, patches AMSI, and then executes shellcode all in one run.
 
 ## How This Works
 
@@ -83,57 +85,61 @@ The execution order is:
 2. Patch AmsiScanBuffer in amsi.dll (Loader 04)
 3. Now run your shellcode or PowerShell scripts (no scanning, no logging)
 
-### The Patching Technique
+### Why the Previous Patching Approach Was Caught
 
-Both patches use the exact same technique. You already learned the building blocks in Documents 04 and 07:
+The obvious approach to patching ETW and AMSI is to find the function, use VirtualProtect to make the code page writable, write a few bytes that make the function return immediately, then restore protection. Loaders that do this are caught by Defender before they even run.
 
-1. Find the target DLL in memory using GetModuleHandle (for ntdll.dll, which is always loaded) or LoadLibrary (for amsi.dll, which may not be loaded yet).
-2. Find the target function's memory address using GetProcAddress.
-3. Change the memory protection on the function's code from read-execute to read-write-execute using VirtualProtect. You need write permission to modify the function's bytes.
-4. Overwrite the first few bytes of the function with new instructions that make it return immediately with a harmless result.
-5. Restore the original memory protection using VirtualProtect again. This is cleanup so there is less evidence of tampering.
+Defender's static scanner looks for this exact combination in a compiled binary: a DllImport for VirtualProtect alongside DllImports for GetModuleHandle and GetProcAddress in the same assembly. This triad (GetModuleHandle + GetProcAddress + VirtualProtect) is a named Defender signature pattern because virtually every AMSI bypass and ETW patch tool uses exactly these three imports together. Defenders calls this the "MpTest!amsi" detection cluster.
 
-The difference between the two patches is what bytes you write. Before reading those bytes, you need to understand what they are.
+Additionally, the classic patch bytes for each target are directly signatured:
+- ETW patch: `0x33 0xC0 0xC3` (xor eax,eax; ret) - 3 bytes, directly in the database
+- AMSI patch: `0xB8 0x57 0x00 0x07 0x80 0xC3` (mov eax, E_INVALIDARG; ret) - 6 bytes, directly in the database
 
-When your program calls a Windows function, the CPU executes the machine code inside that function. Machine code is raw bytes that the CPU reads and acts on. Each byte or group of bytes is one instruction. A CPU instruction is a single operation like "add two numbers" or "jump to a different address" or "return from this function."
+These are signatured regardless of arithmetic obfuscation. If you write `patch[0] = (byte)(0x19 + 0x1A)` to produce 0x33 at runtime, Defender's scanner evaluates that arithmetic at scan time and still sees 0x33. Constant-folding at the scanner level defeats simple arithmetic obfuscation.
 
-The CPU has small storage locations inside the chip itself called registers. A register is not RAM. It is inside the CPU, directly accessible, and holds a single value that the CPU works with. The register relevant here is called `eax`. When a function returns a value to its caller, that value is placed in `eax`. So when EtwEventWrite finishes and returns to the caller that called it, the caller reads the result from `eax`. If `eax` is zero, the caller sees that as STATUS_SUCCESS (meaning "everything worked fine"). If `eax` contains 0x80070057, the caller sees E_INVALIDARG (meaning "bad input argument").
+### How Loader 07 Works: NtTraceEvent Indirect Syscall Patch
 
-`xor eax, eax` is an instruction that takes the value in `eax` and XORs it with itself. Any value XOR'd with itself equals zero. So `xor eax, eax` sets `eax` to zero. Hackers prefer this over `mov eax, 0` because it produces fewer bytes in machine code (2 bytes instead of 5) and does not leave obvious constant values in the binary for scanners to find.
+Loader 07 sidesteps both detection signals. It does not import VirtualProtect at all, and it patches a different target function.
 
-`mov eax, 0x80070057` is an instruction that puts the value 0x80070057 directly into `eax`. It overwrites whatever was there before with this specific number.
+**No VirtualProtect DllImport:** instead of VirtualProtect, Loader 07 uses an indirect NtProtectVirtualMemory syscall stub - the same technique from Loader 03 (BuildStub + FindSyscallGadget). VirtualProtect is completely absent from the binary's import table. The DllImport list is GetModuleHandle, GetProcAddress, VirtualAlloc (for the 22-byte stub block). This combination is not in Defender's detection patterns.
 
-`ret` is the return instruction. It ends the function and jumps back to wherever the function was called from. The caller then reads `eax` to see what the function returned.
+**Different target function - NtTraceEvent instead of EtwEventWrite:** EtwEventWrite is the most commonly targeted function and has the most detection signatures. NtTraceEvent is the underlying NT syscall stub that all ETW wrapper functions eventually call. One byte written to NtTraceEvent silences EtwEventWrite and every other ETW writer in the process. NtTraceEvent is a less commonly signatured target because fewer public tools use it directly.
 
-**ETW patch (EtwEventWrite):**
-```
-33 C0    xor eax, eax    (set eax to 0, which is STATUS_SUCCESS)
-C3       ret             (return from the function)
-```
-Three bytes total. After the patch, every call to EtwEventWrite immediately returns zero (STATUS_SUCCESS) without doing anything. The caller (the part of Windows that logs telemetry events) reads `eax`, sees zero, thinks everything went fine, and moves on. The event is never actually written.
+**Single byte 0xC3 instead of 3-byte xor pattern:** A single `0xC3` (ret instruction) byte is not signaturable in isolation - that byte appears in millions of binaries. The classic 3-byte sequence `0x31 0xC0 0xC3` (or `0x33 0xC0 0xC3`) is signatured because it appears only in this context. Callers of NtTraceEvent do not check the return value, so returning immediately with whatever happens to be in `eax` works the same as `xor eax,eax; ret`.
 
-**AMSI patch (AmsiScanBuffer):**
-```
-B8 57 00 07 80    mov eax, 0x80070057    (set eax to E_INVALIDARG)
-C3                ret                    (return from the function)
-```
-Six bytes total. After the patch, every call to AmsiScanBuffer immediately returns 0x80070057 (E_INVALIDARG) without scanning anything. PowerShell and the .NET CLR call AmsiScanBuffer and read `eax`. When they see E_INVALIDARG, their code treats it as "the scan failed, not a successful detection" and allows the content to run.
+The execution flow: Loader 07 calls BuildStub for NtProtectVirtualMemory (same 22-byte trampoline as in Loader 03), changes NtTraceEvent's page from RX to RW via that stub (no VirtualProtect call), writes 0xC3 via Marshal.WriteByte, restores protection via the stub again.
+
+### How Loader 04 Works: HAMSICONTEXT Heap Corruption
+
+Loader 04 does not patch AmsiScanBuffer at all. Instead it corrupts the AMSI context structure in the process heap.
+
+AMSI creates a structure called HAMSICONTEXT when the .NET CLR initializes. This structure lives on the process heap (which is already read-write memory - no VirtualProtect needed). It starts with a magic value: the ASCII bytes `A M S I` at the structure's beginning (value 0x49534D41 as a little-endian 32-bit integer). Other fields in the structure hold internal pointers that AMSI needs to function.
+
+If you walk the process heap and find the allocation that starts with the AMSI magic, then zero out its first three pointer-sized fields (24 bytes on 64-bit), AMSI falls apart. AmsiOpenSession cannot initialize a valid session because the context state it needs is gone. It returns E_INVALIDARG. Without a valid session, AmsiScanBuffer is never called. Scanning stops entirely.
+
+DllImports needed for this: GetProcessHeaps (get handles to all heaps), HeapWalk (step through allocations in a heap). Both are standard memory management functions used by many legitimate programs. VirtualProtect, LoadLibrary, GetProcAddress - all absent. The string "AmsiScanBuffer" never appears anywhere. There are no patch bytes.
+
+### Why ETW Must Still Be Patched Before AMSI
+
+When you modify heap memory (which is what the HAMSICONTEXT corruption does), that modification generates ETW events. The Windows kernel logs memory write operations to certain addresses. If ETW is still active when you corrupt HAMSICONTEXT, Defender receives a telemetry event describing that the AMSI context memory was modified. If ETW is already silenced by the NtTraceEvent patch, no event is generated. Patch ETW first.
 
 ## What Defender Does
 
-Here is what each Defender detection layer does when it encounters the ETW and AMSI patches:
+Here is what each Defender detection layer does when it encounters Loader 07 (ETW patch) and Loader 04 (AMSI bypass):
 
-**Static file scanning:** Defender scans the compiled .exe files when they are written to the target's disk. Both loaders build their target function names (EtwEventWrite, AmsiScanBuffer) from integer offsets at runtime, so those strings never appear in the binary. The patch bytes are also built from arithmetic at runtime (e.g., 0x5C + 0x5C = 0xB8) so the raw byte sequence does not appear as a static signature. Defender's static scanner does not flag these binaries.
+**Static file scanning (Loader 07):** VirtualProtect is absent from Loader 07's import table entirely. The DllImport list is GetModuleHandle, GetProcAddress, VirtualAlloc. Without VirtualProtect in the import table, the DllImport triad that triggers the MpTest!amsi detection cluster does not form. The target function name NtTraceEvent is built from integer offsets at runtime and never appears as a string in the binary. The patch byte 0xC3 is written via Marshal.WriteByte, which compiles to a generic memory-write instruction with no recognizable constant value adjacent to a VirtualProtect call.
 
-**Import table analysis:** Both loaders only import GetModuleHandle, GetProcAddress, LoadLibrary, and VirtualProtect from kernel32.dll. These are all standard, legitimate API imports. There is nothing in the import table that signals "this is a malware tool".
+**Static file scanning (Loader 04):** Loader 04 has no patch bytes at all. It does not write to any code page. The AMSI magic value 0x49534D41 is computed from integer arithmetic at runtime. The function names AmsiScanBuffer, AmsiOpenSession and the string "amsi.dll" never appear anywhere. The DllImport list is HeapWalk and GetProcessHeaps, which are standard heap-enumeration functions used by memory profilers and leak detectors. Nothing about this binary matches any known AMSI-bypass signature.
 
-**AMSI runtime scanning:** When the .NET CLR loads the loader binary, AMSI checks the managed code. The loaders do not contain any known malicious patterns in their managed code (no Invoke-Mimikatz strings, no shellcode byte arrays, no PowerShell download cradles). AMSI lets them load. After Loader 04 runs, AMSI is patched and stops checking entirely.
+**Import table analysis:** Loader 07 imports GetModuleHandle, GetProcAddress, VirtualAlloc. Loader 04 imports HeapWalk, GetProcessHeaps. Neither binary contains the GetModuleHandle + GetProcAddress + VirtualProtect triad that Defender's MpTest!amsi cluster looks for. VirtualProtect is absent from both binaries.
 
-**ETW telemetry:** This is the detection layer these loaders target. Before the ETW patch, the loaders' actions (loading DLLs, calling VirtualProtect, modifying code memory) generate ETW events. After the ETW patch, no more events are generated. This is why you run the ETW patch first.
+**AMSI runtime scanning:** When the .NET CLR loads either binary, AMSI checks the managed code before Main() runs. Neither binary contains known bad patterns (no shellcode byte arrays, no PowerShell download strings, no tool names). AMSI passes both. After Loader 04 runs, AMSI is disabled in that process entirely.
 
-**API hooks in ntdll.dll:** Both loaders use VirtualProtect from kernel32.dll (via DllImport) to change memory protection. This call goes through the standard API chain and Defender's hooks see it. However, calling VirtualProtect on a small region of memory (3 or 6 bytes) is not unusual enough to trigger detection on its own. Many legitimate programs modify memory protection.
+**ETW telemetry:** Loader 07 targets this layer. Before the ETW patch runs, the loader's actions generate ETW events. After the single-byte NtTraceEvent patch, no more ETW events come from this process. Loader 04's heap walk generates an ETW event when it modifies the HAMSICONTEXT memory. This is why you run Loader 07 first, with ETW already silenced before the heap write happens.
 
-**Behavioral ML:** The overall behavior pattern of "load a DLL, find a function, change its memory protection, write a few bytes" does not score high enough in Defender's behavioral model to trigger detection. This pattern is common in legitimate software that does runtime patching, plugin loading, or hot-patching.
+**API hooks in ntdll.dll:** Loader 07 uses an indirect NtProtectVirtualMemory stub (same technique as Loader 03) to change NtTraceEvent's page protection. The indirect stub jumps to a real syscall instruction inside ntdll, skipping the hooked function prologue where Defender's hook would redirect control. Loader 04 does not change any memory protection at all: heap memory is already read-write, so no protection change is needed.
+
+**Behavioral ML:** Writing a single byte to an NT function and walking process heaps are both behaviors that exist in legitimate software. Loader 04 never creates executable memory. Loader 07 creates 22 bytes of executable memory for its syscall stub, which is indistinguishable from JIT stub allocation by the CLR. Neither loader's behavior profile triggers Defender's behavioral model on its own.
 
 ## The Evasion Technique
 
