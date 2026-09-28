@@ -257,7 +257,7 @@ This is the same technique from Loader 03. Each character is computed by adding 
 }
 ```
 
-When this function runs, it produces the string "EtwEventWrite". But in the compiled binary, only the integer array [37, 84, 87, 37, 86, 69, 78, 84, 55, 82, 73, 84, 69] and the base value 32 exist. A static scanner searching the binary for the string "EtwEventWrite" will not find it.
+When this code runs at runtime, it assembles the string "NtTraceEvent" character by character in the computer's RAM and passes it to GetProcAddress. In the .exe file sitting on your hard drive, there is no string "NtTraceEvent". There are only integer constants: 32, 46, 84, 52, 82, 65, 67, 69, 37, 86, 69, 78, 84. You can open the compiled .exe in Notepad right now and you will never see the word "NtTraceEvent" because it is never stored as text in the file. Defender opens that .exe, reads the whole thing from start to end, and checks whether any text inside it matches something in its database. "NtTraceEvent" is not there. Neither is "EtwEventWrite". Defender finds nothing. Loader 07 also has GetNtdllName() building "ntdll" and GetNtProtectName() building "NtProtectVirtualMemory" from the same technique.
 
 #### Building the DLL Name
 
@@ -443,7 +443,7 @@ Same technique as the ETW patch and Loader 03. Each character of "AmsiScanBuffer
 }
 ```
 
-The result is the 14-character string "AmsiScanBuffer". In the compiled binary, only the integer offsets and the base value exist, not the string itself.
+This builds "AmsiScanBuffer" character by character at runtime, 14 characters total. The .exe file on your hard drive contains only the integer offsets that add up to those ASCII values when the code runs. You can open the compiled .exe in Notepad right now and you will never see "AmsiScanBuffer" as readable text because it is never stored as a string in the file. Defender opens that .exe, reads the whole thing from start to end, and checks whether any text matches its database. "AmsiScanBuffer" is simply not there. Loader 04 also has GetNtdllName() and GetNtProtectName() built the same way, identical to Loader 07.
 
 #### Building the DLL Name
 
@@ -464,7 +464,7 @@ static string GetTargetDllName()
 }
 ```
 
-This builds "amsi.dll" from integer offsets. Unlike the ETW patch which used GetModuleHandle without the extension, the AMSI patch uses LoadLibrary which needs the full filename including the ".dll" extension. The period (.) is at ASCII code 46, computed as 32 + 14.
+This builds the string "amsi.dll" from integer arithmetic at runtime. The .exe file sitting on your hard drive contains only the numbers 32, 65, 77, 83, 73, 14, 68, 76, 76. Defender opens that .exe, reads the whole thing from start to end, and checks whether any text matches its database. "amsi.dll" is not there as readable text, only as numbers that produce the string at runtime when the code runs. The period character (.) is ASCII 46, computed as 32 + 14. LoadLibrary needs the full filename with the ".dll" extension, which is why the period and all four characters of "dll" are included.
 
 #### The Patch Function
 

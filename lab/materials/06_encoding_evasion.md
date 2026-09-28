@@ -180,7 +180,7 @@ static extern IntPtr CreateThread(IntPtr lpThreadAttributes,
 
 These are the same DllImport lines from Loader 01. VirtualAlloc asks Windows for a block of RAM. CreateThread starts a new thread that begins executing at a specific memory address. Both functions come from kernel32.dll.
 
-These DllImport lines are also what gets the loader caught. When the C# compiler sees DllImport, it writes the function names (VirtualAlloc, CreateThread) into the binary's import table. Defender reads the import table and sees a program importing memory allocation and thread creation functions from kernel32.dll, which matches the shellcode injection pattern.
+These DllImport lines are also what gets the loader caught. When the C# compiler sees a DllImport line and compiles it, it writes the function name directly into the .exe file on your hard drive in a section called the import table. You can open the compiled .exe in Notepad right now and you will literally see "VirtualAlloc" and "CreateThread" sitting there as readable text inside all the garbage characters. Defender opens that .exe file, reads the whole thing from start to end, and when it finds "VirtualAlloc" and "CreateThread" together in the import table, it recognizes that combination as a known shellcode injection pattern in its database.
 
 ```csharp
 [DllImport("kernel32.dll", SetLastError = true)]
@@ -308,7 +308,7 @@ After generating the random key, it converts the key bytes to a hex string for p
     File.WriteAllBytes(outputPath, encrypted);
 ```
 
-The encoder calls the XorCrypt function to encrypt the shellcode, then writes the encrypted bytes to the output file. This output file is safe to transfer to the target. Defender will scan it on disk and find no matching signatures because every byte has been transformed by XOR.
+The encoder calls the XorCrypt function to encrypt the shellcode, then writes the encrypted bytes to the output file. This output file is safe to transfer to the target. Defender will open that file on your hard drive, read the whole thing from start to end, and find no matching signatures because every byte has been scrambled by XOR. The original shellcode bytes that Defender knows about are completely gone, replaced with different values that match nothing in its database.
 
 ### Loader Mode
 
@@ -341,7 +341,7 @@ Read the encrypted bytes from the file and convert the hex key string back to by
     Console.WriteLine("[+] Shellcode decrypted in memory.");
 ```
 
-This is where the decryption happens. XorCrypt takes the encrypted bytes and the key, XORs them, and produces the original shellcode. The decrypted shellcode now exists only in RAM, inside the `shellcode` byte array. It was never written to disk in decrypted form.
+This is where the decryption happens. XorCrypt takes the encrypted bytes and the key, XORs them, and produces the original shellcode. The decrypted shellcode now exists only in the computer's RAM, inside the `shellcode` byte array. It was never written to the hard drive in its decrypted form. Defender scans files on your hard drive but cannot scan data that only exists in RAM. The shellcode bypasses the file scanner entirely because the only version that ever touches the hard drive is the scrambled, XOR-encrypted form that matches nothing in Defender's database.
 
 ```csharp
     IntPtr memoryAddress = VirtualAlloc(

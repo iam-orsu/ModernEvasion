@@ -134,11 +134,11 @@ namespace ShellcodeLoader
     {
 ```
 
-A namespace is a label that groups your code. A class is a container for your functions and variables. The names you pick do not affect how the code runs, but they DO affect detection. Defender scans the compiled file and sees these names. Naming your class "ShellcodeInjector" would be a red flag. In later loaders, you will see neutral names like "Program" or "RuntimeLoader".
+A namespace is a label that groups your code. A class is a container for your functions and variables. The names you pick do not affect how the code runs, but they do affect detection. When C# compiles your code into a .exe file, those names get written directly into that file on your hard drive as plain readable text. You can open the compiled .exe in Notepad right now and you will literally see "ShellcodeLoader" sitting there inside all the garbage characters. Defender opens that .exe file, reads the whole thing from start to end, and checks whether any text inside it matches something in its database of known bad strings. A class named "ShellcodeInjector" would match immediately. In later loaders, you will see neutral names like "Program" or "RuntimeLoader" because those names do not appear in Defender's database.
 
 ### Declaring Windows API Functions
 
-The loader needs three Windows functions. You declare them with DllImport so C# knows how to call them.
+The loader needs three Windows functions. You declare them with DllImport so C# knows how to call them. When the C# compiler sees a DllImport line, it writes the function name into a section of the .exe file on your hard drive called the import table. That import table is just text sitting inside the .exe file. Defender opens the .exe, reads the whole file from start to end, and that text is right there in plain readable form. "VirtualAlloc" and "CreateThread" together in an import table match a known shellcode injection pattern in Defender's database.
 
 ```csharp
         [DllImport("kernel32.dll", SetLastError = true)]

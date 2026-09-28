@@ -231,7 +231,7 @@ static extern bool CloseHandle(IntPtr hObject);
 
 Five imports, all from kernel32.dll, all completely standard. GetModuleHandle and GetProcAddress are the same two imports from Loader 03. LoadLibrary is used for loading amsi.dll (same as Loader 04). VirtualProtect is used for changing memory protection when applying the ETW and AMSI patches. CloseHandle releases process and thread handles after remote injection.
 
-Compare this to Loader 05 (remote thread injection), which imported OpenProcess, VirtualAllocEx, WriteProcessMemory, CreateRemoteThread, WaitForSingleObject, and CloseHandle. Those imports immediately signaled "process injection tool". Loader 08 hides all the injection-related functions behind dynamic resolution.
+When C# compiles each DllImport line, it writes the function name directly into the .exe file on your hard drive in the import table section. You can open Loader 08's compiled .exe in Notepad right now and you will literally see "GetModuleHandle", "GetProcAddress", "LoadLibrary", "VirtualProtect", "CloseHandle" sitting there as readable text inside all the garbage characters. Defender opens that .exe, reads the whole thing from start to end, and that combination matches nothing suspicious in its database. Compare this to Loader 05, where "OpenProcess", "VirtualAllocEx", "WriteProcessMemory", "CreateRemoteThread" were all sitting there in the same import table as readable text, and Defender matched that cluster as a process injection tool immediately. Loader 08 hides all the injection-related functions behind dynamic resolution at runtime, so their names never appear in the .exe file on your hard drive.
 
 ### OpenProcess via Dynamic Resolution
 
@@ -248,9 +248,9 @@ static IntPtr ResolveAndCall(uint access, bool inherit, int pid)
 }
 ```
 
-This is a new pattern not in previous loaders. In Loader 05, OpenProcess was imported via DllImport and appeared in the import table. In Loader 08, OpenProcess is resolved at runtime:
+This is a new pattern not in previous loaders. In Loader 05, OpenProcess was imported via DllImport, which meant the word "OpenProcess" was written into the .exe file on your hard drive as readable text. In Loader 08, OpenProcess is resolved at runtime:
 
-1. GetModuleHandle finds kernel32.dll using the name built from offsets: base 32 plus offsets [75,69,82,78,69,76,19,18,14,68,76,76] produces "kernel32.dll". Wait, let us verify: 32+75=107='k', 32+69=101='e', 32+82=114='r', 32+78=110='n', 32+69=101='e', 32+76=108='l', 32+19=51='3', 32+18=50='2', 32+14=46='.', 32+68=100='d', 32+76=108='l', 32+76=108='l'. That spells "kernel32.dll".
+1. GetModuleHandle finds kernel32.dll using the name built from offsets: base 32 plus offsets [75,69,82,78,69,76,19,18,14,68,76,76] produces "kernel32.dll". Let us verify: 32+75=107='k', 32+69=101='e', 32+82=114='r', 32+78=110='n', 32+69=101='e', 32+76=108='l', 32+19=51='3', 32+18=50='2', 32+14=46='.', 32+68=100='d', 32+76=108='l', 32+76=108='l'. That spells "kernel32.dll".
 
 2. GetProcAddress finds OpenProcess inside kernel32.dll. The name is built from offsets: 32+47=79='O', 32+80=112='p', 32+69=101='e', 32+78=110='n', 32+48=80='P', 32+82=114='r', 32+79=111='o', 32+67=99='c', 32+69=101='e', 32+83=115='s', 32+83=115='s'. That spells "OpenProcess".
 
@@ -258,7 +258,7 @@ This is a new pattern not in previous loaders. In Loader 05, OpenProcess was imp
 
 4. The delegate is called immediately with the access flags, inherit flag, and PID.
 
-The result is that OpenProcess is called at runtime without ever appearing in the import table. A static analysis tool sees GetModuleHandle and GetProcAddress calls (both normal) but does not see OpenProcess in the binary's imports.
+The result is that "OpenProcess" is assembled in the computer's RAM at runtime and never written into the .exe file on your hard drive as text. You can open the compiled .exe in Notepad right now and you will never see "OpenProcess" sitting there because it is never stored as a string. Defender opens that .exe, reads the whole thing from start to end, and only finds "GetModuleHandle" and "GetProcAddress" in the import table, both of which appear in thousands of normal programs and match nothing suspicious in Defender's database.
 
 ### The NT Function Delegates
 
@@ -279,7 +279,7 @@ delegate int ThreadCreateDelegate(out IntPtr ThreadHandle, uint DesiredAccess, I
 delegate int WaitObjectDelegate(IntPtr Handle, bool Alertable, IntPtr Timeout);
 ```
 
-You have seen MemAllocDelegate, MemProtectDelegate, ThreadCreateDelegate, and WaitObjectDelegate in Loader 03. The new one is MemWriteDelegate, which represents NtWriteVirtualMemory. This function writes bytes from your process into another process's memory, the same thing WriteProcessMemory does but at the NT level. The delegate takes a ProcessHandle (the target process), BaseAddress (where to write in the target), Buffer (the bytes to write), NumberOfBytesToWrite, and NumberOfBytesWritten (how many bytes were actually written).
+You have seen MemAllocDelegate, MemProtectDelegate, ThreadCreateDelegate, and WaitObjectDelegate in Loader 03. The new one is MemWriteDelegate, which represents NtWriteVirtualMemory. This function writes bytes from your process into another process's memory, the same thing WriteProcessMemory does but at the NT level. The delegate takes a ProcessHandle (the target process), BaseAddress (where to write in the target), Buffer (the bytes to write), NumberOfBytesToWrite, and NumberOfBytesWritten (how many bytes were actually written). Because these are delegate types rather than DllImport declarations, none of the function names "NtWriteVirtualMemory", "NtAllocateVirtualMemory", "NtProtectVirtualMemory", "NtCreateThreadEx", or "NtWaitForSingleObject" get written into the .exe file on your hard drive. Defender reads the whole file from start to end and those names are simply not there.
 
 ### The ETW Patch in Loader 08
 
@@ -351,7 +351,7 @@ static bool PatchScanner()
 }
 ```
 
-Same as Loader 04 but condensed. Labeled "[2/6]" in the output.
+Similar goal to Loader 04 (disable AMSI by patching AmsiScanBuffer), but the implementation differs. Loader 08 uses VirtualProtect via DllImport and applies a 6-byte E_INVALIDARG return patch. Loader 04 avoids VirtualProtect entirely and writes only a single 0xC3 byte via an indirect NtProtectVirtualMemory syscall stub. The reason Loader 08 can afford to have "VirtualProtect" sitting as readable text in the .exe file on your hard drive is that by the time this function runs, the ETW patch has already silenced the detection signal that VirtualProtect's presence would normally trigger. Defender would usually notice VirtualProtect being called on a system DLL's memory page through ETW telemetry, but with ETW already patched in step 1, no telemetry gets through. Labeled "[2/6]" in the output.
 
 ### The Main Function: The Orchestrator
 

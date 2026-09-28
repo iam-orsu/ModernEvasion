@@ -343,9 +343,9 @@ This is NtWaitForSingleObject. It waits for the thread to finish. `Timeout` of I
 [DllImport("kernel32.dll")] static extern IntPtr VirtualAlloc(IntPtr addr, uint size, uint type, uint protect);
 ```
 
-These three are the only DllImport lines in the entire loader. GetModuleHandle and GetProcAddress from kernel32.dll are used in thousands of legitimate programs. VirtualAlloc here allocates only the 88-byte stub block (4 stubs at 22 bytes each), which is not suspicious by itself. Compare this to Loaders 01 and 02, which imported CreateThread and WaitForSingleObject - that exact combination signals shellcode injection.
+These three are the only DllImport lines in the entire loader. When the C# compiler processes each DllImport line, it writes the function name directly into the .exe file on your hard drive in a section called the import table. You can open the compiled .exe in Notepad right now and you will literally see "GetModuleHandle", "GetProcAddress", and "VirtualAlloc" sitting there as readable text inside all the garbage characters. Defender opens that .exe, reads the whole thing from start to end, and checks whether any function name combinations in the import table match something in its database. "GetModuleHandle" and "GetProcAddress" appear in thousands of legitimate programs and do not match any shellcode injection pattern. Compare this to Loaders 01 and 02, where "VirtualAlloc" and "CreateThread" were both visible in the import table and Defender matched that combination immediately.
 
-Note what is NOT here: NtAllocateVirtualMemory, NtProtectVirtualMemory, NtCreateThreadEx, NtWaitForSingleObject. Those four functions are called through stubs, not through DllImport.
+What is NOT in the import table: NtAllocateVirtualMemory, NtProtectVirtualMemory, NtCreateThreadEx, NtWaitForSingleObject. Those four functions do the actual shellcode execution work. Because they are called through stubs rather than DllImport, their names never get written into the .exe file on your hard drive. Defender reads the import table and finds nothing to match.
 
 ### FindSyscallGadget: Finding the syscall; ret Instruction in ntdll
 
@@ -418,7 +418,7 @@ for (int i = 0; i < sc.Length; i++)
     sc[i] ^= xorKey;
 ```
 
-The shellcode is XOR-encoded with key 0xAB and embedded directly in the binary as a byte array. The placeholder is replaced by the embed_shellcode.py script before compilation. The loop decodes the bytes in memory. The encoded byte array does not match any Defender signature. The decode happens entirely in RAM.
+The shellcode is XOR-encoded with key 0xAB and embedded directly in the binary as a byte array. Before compiling, you replace the text `SHELLCODE_PLACEHOLDER` in the source file with your actual XOR-encoded shellcode bytes. When C# compiles this, those scrambled byte values get written directly into the .exe file on your hard drive. Defender opens that .exe, reads the whole thing from start to end, and checks whether any byte sequence matches something in its database. The XOR-scrambled bytes look like random data. The original shellcode bytes that Defender knows about are not there - every byte has been flipped by XOR. The decoding loop that unscrambles the shellcode runs entirely in the computer's RAM, so the real shellcode never touches the hard drive.
 
 ```csharp
 stubBlock = VirtualAlloc(IntPtr.Zero, STUB_SIZE * STUB_COUNT,

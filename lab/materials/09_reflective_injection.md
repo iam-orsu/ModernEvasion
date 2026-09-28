@@ -240,6 +240,8 @@ CreateRemoteThread creates a new thread inside another process. The critical par
 
 The other parameters are mostly defaults: `lpThreadAttributes` is IntPtr.Zero (default security), `dwStackSize` is 0 (default stack size), `lpParameter` is IntPtr.Zero (no parameter), `dwCreationFlags` is 0 (start immediately), and `lpThreadId` is IntPtr.Zero (we do not need the thread ID).
 
+All five of these DllImport lines have a cost. When the C# compiler processes each one, it writes the function name directly into the .exe file on your hard drive in a section called the import table. You can open the compiled .exe in Notepad right now and you will literally see "OpenProcess", "VirtualAllocEx", "WriteProcessMemory", "CreateRemoteThread", and "VirtualProtectEx" sitting there as readable text inside all the garbage characters. Defender opens that .exe, reads the whole thing from start to end, and when it finds that cluster of cross-process memory and thread functions together in the import table, it recognizes it immediately as a process injection tool. This is why Loader 05 gets caught before it can do anything useful.
+
 #### Finding the Target Process
 
 ```csharp
@@ -444,6 +446,8 @@ static extern uint ResumeThread(IntPtr hThread);
 ```
 
 ResumeThread unpauses a suspended thread. After calling this, the thread starts running. Because we queued an APC, the thread processes the APC first (running our shellcode) before continuing with the process's own initialization code.
+
+Loader 06's imports are CreateProcess, VirtualAllocEx, WriteProcessMemory, VirtualProtectEx, QueueUserAPC, ResumeThread, and CloseHandle. Every one of those names gets written directly into the .exe file on your hard drive when the C# compiler processes the DllImport lines. Defender opens that .exe, reads the whole thing from start to end, and the combination of cross-process memory operations with QueueUserAPC is a well-known APC injection pattern in its database. This is again why Loader 06 gets caught before it runs when used alone.
 
 #### Creating the Suspended Process
 
