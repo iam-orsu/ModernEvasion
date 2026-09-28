@@ -744,9 +744,9 @@ The CPU started executing at the address in RAM. It found the byte 0xC3 (RET), w
 
 ### Part 9: GetModuleHandle and GetProcAddress - Finding Functions Without DllImport
 
-Every DllImport you write puts the function name into the compiled binary's **import table**. The import table is a list inside the .exe or .dll file that says "this program uses these functions from these DLLs."
+Every DllImport you write puts the function name into the compiled binary's **import table**. The import table is a section inside the .exe file that lists every DLL function your program calls. When C# compiles a program that has DllImport lines for VirtualAlloc, VirtualProtect, and CreateThread, those three names get written directly into the .exe file on your hard drive. You can open that compiled .exe in Notepad right now and you will literally see "VirtualAlloc", "VirtualProtect", "CreateThread" sitting there as readable text inside all the garbage characters.
 
-Defender reads this list. If your import table shows VirtualAlloc + VirtualProtect + CreateThread together, Defender flags your program before it even runs because that combination is used for code injection.
+Defender opens that .exe file, reads the whole thing from start to end, and checks whether any text inside it matches something in its database of known bad strings. When it finds those three function names together in the import table, it recognizes that combination as a shellcode injection tool in its database and flags the program before it even runs.
 
 To avoid putting function names in the import table, you can find functions while the program is running using two Windows functions: GetModuleHandle and GetProcAddress.
 
@@ -800,7 +800,7 @@ Now convert the address to something you can call:
         IntPtr mem = allocFunc(IntPtr.Zero, 4096, 0x3000, 0x04);
 ```
 
-This does the same thing as calling VirtualAlloc through DllImport. The difference is that "VirtualAlloc" does not appear in the compiled binary's import table because you did not use DllImport for it. You only used DllImport for GetModuleHandle and GetProcAddress, which are called by thousands of legitimate programs and are not suspicious on their own.
+This does the same thing as calling VirtualAlloc through DllImport. The difference is that "VirtualAlloc" does not appear in the compiled binary's import table because you did not use DllImport for it. You only used DllImport for GetModuleHandle and GetProcAddress. You can open that compiled .exe in Notepad right now and you will see "GetModuleHandle" and "GetProcAddress" sitting there as readable text, but "VirtualAlloc" is nowhere in the file. Defender opens that .exe, reads the whole thing from start to end, and finds only those two functions, which appear in thousands of legitimate Windows programs. Nothing suspicious in its database matches.
 
 In the real loaders (Documents 05 through 10), even the text "VirtualAlloc" is hidden. Instead of passing the function name as a string to GetProcAddress, the loader builds the name from numbers using FromOffsets (from Document 02):
 
@@ -809,7 +809,7 @@ In the real loaders (Documents 05 through 10), even the text "VirtualAlloc" is h
         IntPtr funcAddr = GetProcAddress(k32, name);
 ```
 
-The compiled binary contains numbers (32, 54, 73...) instead of the text "VirtualAlloc." The text is built only when the program runs, in RAM, and disappears when the program exits. Defender's static scanner reads the file on disk and sees numbers, not function names.
+The .exe file on your hard drive contains only the numbers (32, 54, 73...) instead of the text "VirtualAlloc". Defender opens that .exe, reads the whole thing from start to end, and finds only integers. The string "VirtualAlloc" is assembled character by character in RAM only when the program runs, and it disappears when the program exits.
 
 Here is the complete program:
 

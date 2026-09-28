@@ -341,7 +341,7 @@ Check for failure, then print the address.
         Console.WriteLine("[+] Wrote 0xAA to all 1 MB.");
 ```
 
-Write to every byte. `Marshal.WriteByte(address, value)` writes a single byte to a specific address. We write to every byte because Windows may not assign physical RAM to pages until they are actually written to (this is called demand paging).
+Write to every byte. `Marshal.WriteByte(address, value)` writes a single byte to a specific address. We write to every byte because of how Windows actually handles page allocation. When you call VirtualAlloc and ask for 1 MB, Windows does not immediately reach into the physical RAM chip and carve out 1 MB. It just creates an entry in its internal table saying "this program's virtual addresses from here to here are reserved." No physical RAM is consumed yet. Only when your program actually touches a page for the first time, by reading or writing to it, does Windows find a free 4 KB chunk on the physical chip and map it. This is called demand paging. If you just called VirtualAlloc and immediately read the working set number, the number would barely move. This loop writes to every byte of the 1 MB to force Windows to map all 256 pages right now, so the working set measurement before and after shows the full 1 MB increase.
 
 ```csharp
         me.Refresh();
@@ -1129,7 +1129,7 @@ Same as VirtualAlloc but the first parameter is a handle to the target process. 
         out uint lpNumberOfBytesWritten);
 ```
 
-`hProcess` is the target. `lpBaseAddress` is the address in the target (from VirtualAllocEx). `lpBuffer` is your byte array. Windows copies bytes across virtual address spaces through the kernel.
+`hProcess` is the target process handle. `lpBaseAddress` is the virtual address inside explorer.exe's address space (the address that VirtualAllocEx gave you). `lpBuffer` is your byte array sitting in your loader's own address space. Your loader and explorer.exe each have their own private virtual address space, and neither can directly read or write the other's. WriteProcessMemory asks the Windows kernel to do the crossing for you. The kernel has access to every process's page tables simultaneously, so it reads bytes from your loader's array and writes them into explorer.exe's pages in one operation. After this call, the shellcode bytes physically exist in explorer.exe's RAM pages, not yours.
 
 **VirtualProtectEx** - changes page permissions in another process:
 
