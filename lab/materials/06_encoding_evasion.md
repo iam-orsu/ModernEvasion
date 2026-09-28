@@ -394,21 +394,35 @@ This creates payload.bin containing raw shellcode bytes. Replace the IP and port
 
 ### Step 2: Compile the Encoder on the Dev Box
 
-On the dev box (ammulu, 192.168.10.150), open the Developer Command Prompt for Visual Studio 2022 and compile the encoder:
+On the dev box (ammulu, 192.168.10.150), open Command Prompt and create a new project for the encoder:
 
 ```
-csc /out:xor_encode.exe 02_xor_encoder.cs /define:ENCODER
+dotnet new console -n XorEncode
 ```
 
-The `/define:ENCODER` flag tells the compiler to include the code inside the `#if ENCODER` block and skip the `#else` block. The result is xor_encode.exe, which only encrypts shellcode and does not import any suspicious Windows API functions.
+Replace the contents of `XorEncode\Program.cs` with the code from `02_xor_encoder.cs`. Then publish with the `ENCODER` constant defined, which tells the compiler to include the `#if ENCODER` block and skip the `#else` block:
+
+```
+dotnet publish XorEncode -c Release -r win-x64 --self-contained false /p:PublishSingleFile=true /p:DefineConstants=ENCODER -o output_encoder/
+```
+
+The result is `output_encoder\XorEncode.exe`, which only encrypts shellcode and does not import any suspicious Windows API functions.
 
 ### Step 3: Compile the Loader on the Dev Box
 
+Create a second project for the loader:
+
 ```
-csc /unsafe /out:xor_loader.exe 02_xor_encoder.cs
+dotnet new console -n XorLoader
 ```
 
-Without the `/define:ENCODER` flag, the compiler includes the `#else` block (the loader code) and skips the `#if ENCODER` block. The `/unsafe` flag is needed because Marshal.Copy works with unmanaged memory.
+Replace the contents of `XorLoader\Program.cs` with the code from `02_xor_encoder.cs`. Then publish without the `ENCODER` constant so the compiler includes the `#else` block (the loader code) and skips the `#if ENCODER` block:
+
+```
+dotnet publish XorLoader -c Release -r win-x64 --self-contained false /p:PublishSingleFile=true -o output_loader/
+```
+
+The loader binary is at `output_loader\XorLoader.exe`.
 
 ### Step 4: Encrypt the Shellcode
 
