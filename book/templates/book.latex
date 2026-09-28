@@ -1,8 +1,7 @@
-%% Modern Evasion - Book Template
-%% Inspired by No Starch Press typography and layout
-%% Uses IBM Plex Serif (body), IBM Plex Sans (headings), IBM Plex Mono (code)
+%% Modern Evasion - Book Template v2
+%% IBM Plex Serif (body), IBM Plex Sans (headings), IBM Plex Mono (code)
 
-\documentclass[10pt,twoside,openright]{book}
+\documentclass[10pt,oneside]{book}
 
 %% ─── Core packages ────────────────────────────────────────────────────────────
 \usepackage{fontspec}
@@ -10,9 +9,7 @@
 \usepackage{xcolor}
 \usepackage{fancyhdr}
 \usepackage{titlesec}
-\usepackage{titletoc}
 \usepackage{tocloft}
-\usepackage{listings}
 \usepackage{mdframed}
 \usepackage{enumitem}
 \usepackage{hyperref}
@@ -23,42 +20,53 @@
 \usepackage{array}
 \usepackage{calc}
 \usepackage{etoolbox}
-\usepackage{setspace}
 \usepackage{parskip}
-\usepackage{needspace}
 \usepackage{caption}
-\usepackage{subcaption}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{upquote}
-\usepackage{csquotes}
+\usepackage{fvextra}
+\usepackage{framed}
 
 %% ─── Page geometry ────────────────────────────────────────────────────────────
 \geometry{
-  papersize={7in,9in},
-  top=0.85in,
-  bottom=0.85in,
-  inner=0.85in,
-  outer=0.85in,
-  headsep=0.25in,
-  footskip=0.35in,
-  headheight=30pt,
-  includehead,
-  includefoot
+  letterpaper,
+  top=1.1in,
+  bottom=1.0in,
+  left=1.25in,
+  right=1.25in,
+  headsep=0.3in,
+  footskip=0.4in,
+  headheight=32pt
 }
 
-%% ─── Color palette (No Starch inspired) ──────────────────────────────────────
-\definecolor{nsprimary}{HTML}{1A3A5C}      %% deep navy - chapter numbers, headings
-\definecolor{nsaccent}{HTML}{C0392B}       %% deep red - callouts, inline code tint
-\definecolor{nscode}{HTML}{F6F8FA}         %% near-white - code block background
-\definecolor{nscodeborder}{HTML}{D1D5DA}   %% light gray - code block border
-\definecolor{nsnote}{HTML}{EBF4FF}         %% pale blue - note box background
-\definecolor{nsnoteborder}{HTML}{2980B9}   %% blue - note box left bar
-\definecolor{nswarning}{HTML}{FEF9E7}      %% pale yellow - warning box background
-\definecolor{nswarningborder}{HTML}{E67E22}%% orange - warning box left bar
-\definecolor{nsrule}{HTML}{2E86AB}         %% chapter rule color
-\definecolor{nslightgray}{HTML}{888888}    %% light text for headers/footers
-\definecolor{nsinline}{HTML}{E74C3C}       %% inline code text color
+%% ─── Color palette ────────────────────────────────────────────────────────────
+\definecolor{chapblue}{HTML}{1B3A6B}      %% deep navy - chapters, headings
+\definecolor{accentred}{HTML}{B83232}     %% deep red - callouts, code keywords
+\definecolor{codebg}{HTML}{F4F6F8}        %% very light blue-gray code background
+\definecolor{codeborder}{HTML}{C8D0D8}    %% code block border
+\definecolor{codeaccent}{HTML}{1B3A6B}    %% code keyword color
+\definecolor{notebg}{HTML}{EDF4FB}        %% note box background
+\definecolor{notebar}{HTML}{2980B9}       %% note left bar
+\definecolor{warnbg}{HTML}{FEF3E6}        %% warning background
+\definecolor{warnbar}{HTML}{D68910}       %% warning left bar
+\definecolor{rulegray}{HTML}{C0C8D0}      %% horizontal rule color
+\definecolor{textgray}{HTML}{6B7280}      %% secondary text (headers, page nums)
+\definecolor{chaphighlight}{HTML}{E8EEF7} %% chapter number background
+
+%% Uppercase aliases (book class MakeUppercase uppercases color name arguments)
+\colorlet{CHAPBLUE}{chapblue}
+\colorlet{ACCENTRED}{accentred}
+\colorlet{CODEBG}{codebg}
+\colorlet{CODEBORDER}{codeborder}
+\colorlet{CODEACCENT}{codeaccent}
+\colorlet{NOTEBG}{notebg}
+\colorlet{NOTEBAR}{notebar}
+\colorlet{WARNBG}{warnbg}
+\colorlet{WARNBAR}{warnbar}
+\colorlet{RULEGRAY}{rulegray}
+\colorlet{TEXTGRAY}{textgray}
+\colorlet{CHAPHIGHLIGHT}{chaphighlight}
 
 %% ─── Fonts ────────────────────────────────────────────────────────────────────
 \setmainfont{IBM Plex Serif}[
@@ -67,8 +75,7 @@
   BoldFont       = IBMPlexSerif-SemiBold.ttf,
   ItalicFont     = IBMPlexSerif-Italic.ttf,
   BoldItalicFont = IBMPlexSerif-SemiBoldItalic.ttf,
-  Ligatures      = TeX,
-  Numbers        = OldStyle
+  Ligatures      = TeX
 ]
 \setsansfont{IBM Plex Sans}[
   Path           = /usr/share/fonts/truetype/ibm-plex/,
@@ -84,13 +91,14 @@
   BoldFont       = IBMPlexMono-SemiBold.ttf,
   ItalicFont     = IBMPlexMono-Italic.ttf,
   BoldItalicFont = IBMPlexMono-SemiBoldItalic.ttf,
-  Scale          = 0.88
+  Scale          = 0.85
 ]
 
 %% ─── Paragraph spacing ────────────────────────────────────────────────────────
 \setlength{\parindent}{0pt}
-\setlength{\parskip}{6pt plus 2pt minus 1pt}
-\setlength{\emergencystretch}{3em}
+\setlength{\parskip}{7pt plus 2pt minus 1pt}
+\setlength{\emergencystretch}{4em}
+\sloppy
 
 %% ─── Hyperlinks ───────────────────────────────────────────────────────────────
 \hypersetup{
@@ -103,20 +111,7 @@
   bookmarksopen     = true
 }
 
-%% Uppercase color aliases (book class MakeUppercase uppercases color name args)
-\colorlet{NSPRIMARY}{nsprimary}
-\colorlet{NSACCENT}{nsaccent}
-\colorlet{NSCODE}{nscode}
-\colorlet{NSCODEBORDER}{nscodeborder}
-\colorlet{NSNOTE}{nsnote}
-\colorlet{NSNOTEBORDER}{nsnoteborder}
-\colorlet{NSWARNING}{nswarning}
-\colorlet{NSWARNINGBORDER}{nswarningborder}
-\colorlet{NSRULE}{nsrule}
-\colorlet{NSLIGHTGRAY}{nslightgray}
-\colorlet{NSINLINE}{nsinline}
-
-%% Strip font/color commands from PDF bookmarks (hyperref conflict fix)
+%% Strip decoration from PDF bookmarks
 \pdfstringdefDisableCommands{%
   \let\color\@gobble%
   \let\sffamily\relax%
@@ -126,51 +121,42 @@
   \let\Large\relax%
   \let\large\relax%
   \let\small\relax%
-  \let\tiny\relax%
 }
 
-%% ─── Section heading styles ──────────────────────────────────────────────────
-%% Part
-\titleformat{\part}[display]
-  {\sffamily\Huge\bfseries\color{nsprimary}}
-  {\partname\ \thepart}
-  {20pt}
-  {\Huge}
-
-%% Safe color command for headings (strips cleanly from PDF bookmarks)
+%% ─── Safe color helper for headings ──────────────────────────────────────────
 \newcommand{\hcolor}[1]{\texorpdfstring{\color{#1}}{}}
 
-%% Chapter - No Starch style: rule across page, huge number, title below
+%% ─── Section heading styles ──────────────────────────────────────────────────
+%% Chapter: dramatic opener inspired by No Starch
 \titleformat{\chapter}[display]
-  {\sffamily\huge\bfseries\hcolor{nsprimary}}
+  {\normalfont\sffamily\bfseries}
   {%
-    \hcolor{nsrule}\rule{\textwidth}{2pt}\\[6pt]
-    \normalfont\sffamily\Large\hcolor{nslightgray}Chapter \thechapter%
+    {\color{rulegray}\rule{\textwidth}{1pt}}\\[6pt]%
+    {\small\sffamily\color{textgray}\MakeUppercase{Chapter}\ \thechapter}%
   }
-  {12pt}
-  {\huge\bfseries\hcolor{nsprimary}}
-  [\vspace{4pt}\hcolor{nsrule}\rule{\textwidth}{0.6pt}]
+  {6pt}
+  {\Huge\color{chapblue}}
+  [{\color{rulegray}\vspace{6pt}\rule{\textwidth}{1pt}}]
 
-\titlespacing*{\chapter}{0pt}{-20pt}{32pt}
+\titlespacing*{\chapter}{0pt}{0pt}{28pt}
 
 %% Section
 \titleformat{\section}
-  {\sffamily\large\bfseries\hcolor{nsprimary}}
-  {\hcolor{nsprimary}\thesection}
-  {0.75em}
+  {\sffamily\large\bfseries\hcolor{chapblue}}
+  {\hcolor{chapblue}\thesection}
+  {0.8em}
   {}
-  []
 
-\titlespacing*{\section}{0pt}{18pt plus 4pt minus 2pt}{8pt plus 2pt}
+\titlespacing*{\section}{0pt}{20pt plus 4pt minus 2pt}{8pt plus 2pt}
 
 %% Subsection
 \titleformat{\subsection}
-  {\sffamily\normalsize\bfseries\hcolor{nsprimary}}
-  {\hcolor{nsprimary}\thesubsection}
-  {0.6em}
+  {\sffamily\normalsize\bfseries\hcolor{chapblue}}
+  {\hcolor{chapblue}\thesubsection}
+  {0.7em}
   {}
 
-\titlespacing*{\subsection}{0pt}{12pt plus 3pt minus 1pt}{4pt plus 1pt}
+\titlespacing*{\subsection}{0pt}{14pt plus 3pt minus 1pt}{5pt plus 1pt}
 
 %% Subsubsection
 \titleformat{\subsubsection}
@@ -182,95 +168,102 @@
 \titlespacing*{\subsubsection}{0pt}{10pt plus 2pt}{4pt}
 
 %% ─── Table of contents ────────────────────────────────────────────────────────
-\renewcommand{\contentsname}{\sffamily\texorpdfstring{\color{nsprimary}}{}Contents}
 \setlength{\cftbeforechapskip}{8pt}
 \renewcommand{\cftchapfont}{\sffamily\bfseries}
 \renewcommand{\cftchappagefont}{\sffamily\bfseries}
 \renewcommand{\cftsecfont}{\sffamily\small}
 \renewcommand{\cftsecpagefont}{\sffamily\small}
 \setlength{\cftsecindent}{1.5em}
-\renewcommand{\cftdotsep}{3}
+\renewcommand{\cftdotsep}{4}
 
 %% ─── Headers and footers ─────────────────────────────────────────────────────
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[LE]{\small\sffamily\color{nslightgray}\textit{$title$}}
-\fancyhead[RO]{\small\sffamily\color{nslightgray}\textit{\leftmark}}
-\fancyfoot[LE,RO]{\small\sffamily\color{nslightgray}\thepage}
+%% Single-sided: chapter name on right of header, page number on right of footer
+\fancyhead[R]{%
+  \small\sffamily\color{textgray}%
+  \nouppercase{\leftmark}%
+}
+\fancyhead[L]{%
+  \small\sffamily\color{textgray}%
+  \textit{$title$}%
+}
+\fancyfoot[C]{\small\sffamily\color{textgray}\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
-\renewcommand{\headrule}{\hbox to\headwidth{\color{nscodeborder}\leaders\hrule height \headrulewidth\hfill}}
+\renewcommand{\headrule}{%
+  \hbox to\headwidth{\color{rulegray}\leaders\hrule height \headrulewidth\hfill}%
+}
 \renewcommand{\footrulewidth}{0pt}
 
 \fancypagestyle{plain}{
   \fancyhf{}
-  \fancyfoot[LE,RO]{\small\sffamily\color{nslightgray}\thepage}
+  \fancyfoot[C]{\small\sffamily\color{textgray}\thepage}
   \renewcommand{\headrulewidth}{0pt}
 }
 
-%% ─── Code listings ───────────────────────────────────────────────────────────
-\lstset{
-  basicstyle       = \footnotesize\ttfamily\linespread{1.1}\selectfont,
-  backgroundcolor  = \color{nscode},
-  frame            = single,
-  framesep         = 4pt,
-  rulecolor        = \color{nscodeborder},
-  breaklines       = true,
-  breakatwhitespace= true,
-  breakindent      = 2em,
-  columns          = fullflexible,
-  keepspaces       = true,
-  showstringspaces = false,
-  tabsize          = 4,
-  numbers          = left,
-  numberstyle      = \tiny\sffamily\color{nslightgray},
-  numbersep        = 8pt,
-  xleftmargin      = 20pt,
-  xrightmargin     = 4pt,
-  aboveskip        = 12pt,
-  belowskip        = 8pt,
-  keywordstyle     = \bfseries\color{nsprimary},
-  stringstyle      = \color{nsaccent},
-  commentstyle     = \itshape\color{nslightgray},
-  identifierstyle  = \color{black},
-  literate         = {->}{{\textcolor{nsprimary}{->}}}2
-                     {=>}{{\textcolor{nsprimary}{=>}}}2,
-  language         = [Sharp]C,
-  morekeywords     = {var,string,int,bool,byte,uint,ulong,long,unsafe,fixed,
-                      stackalloc,sizeof,typeof,nameof,using,namespace,class,
-                      static,void,public,private,protected,internal,readonly,
-                      const,new,return,if,else,for,foreach,while,do,switch,
-                      case,break,continue,try,catch,finally,throw,null,true,
-                      false,ref,out,in,params,delegate,event,abstract,virtual,
-                      override,sealed,partial,async,await,yield},
+%% Suppress all-caps in chapter marks
+\renewcommand{\chaptermark}[1]{\markboth{#1}{}}
+
+%% ─── Pandoc syntax highlighting ──────────────────────────────────────────────
+$if(highlighting-macros)$
+$highlighting-macros$
+$endif$
+
+%% Redefine Highlighting to enable line breaking (MUST come after above)
+\RecustomVerbatimEnvironment{Highlighting}{Verbatim}{%
+  commandchars=\\\{\},%
+  fontsize=\small,%
+  breaklines=true,%
+  breakanywhere=true,%
+  breaksymbolleft={\color{textgray}\tiny\ensuremath{\hookrightarrow}},%
+  breaksymbolright={}%
 }
 
-%% Generic listing for shell/bash/plaintext
-\lstdefinestyle{shell}{
-  basicstyle       = \footnotesize\ttfamily,
-  backgroundcolor  = \color{nsprimary!8},
-  frame            = single,
-  rulecolor        = \color{nsprimary!30},
-  numbers          = none,
-  xleftmargin      = 8pt,
-  xrightmargin     = 4pt,
-  aboveskip        = 10pt,
-  belowskip        = 6pt,
-  breaklines       = true,
-  keywordstyle     = \color{black},
-  commentstyle     = \color{nslightgray},
-  stringstyle      = \color{black},
+%% Clean code block container (replaces pandoc's snugshade)
+\renewenvironment{Shaded}{%
+  \begin{mdframed}[%
+    backgroundcolor=codebg,%
+    linecolor=codeborder,%
+    linewidth=0.6pt,%
+    leftmargin=0pt,%
+    rightmargin=0pt,%
+    innerleftmargin=12pt,%
+    innerrightmargin=12pt,%
+    innertopmargin=8pt,%
+    innerbottommargin=8pt,%
+    skipabove=10pt,%
+    skipbelow=8pt,%
+    splitbottomskip=6pt,%
+    splittopskip=6pt%
+  ]%
+}{%
+  \end{mdframed}%
+}
+
+%% ─── Table styling ───────────────────────────────────────────────────────────
+\renewcommand{\arraystretch}{1.4}
+\setlength{\tabcolsep}{8pt}
+
+%% Allow word breaks at / _ . in table cells (handles file paths)
+\newcommand{\allowpathbreaks}{\emergencystretch=3em\sloppy}
+
+%% Style longtables with booktabs-like rules and tighter font
+\AtBeginEnvironment{longtable}{%
+  \small\sffamily\allowpathbreaks%
+  \setlength{\LTpre}{8pt}%
+  \setlength{\LTpost}{8pt}%
 }
 
 %% ─── Callout boxes ───────────────────────────────────────────────────────────
 \mdfdefinestyle{notestyle}{
-  backgroundcolor  = nsnote,
-  linecolor        = nsnoteborder,
+  backgroundcolor  = notebg,
+  linecolor        = notebar,
   linewidth        = 3pt,
   topline          = false,
   rightline        = false,
   bottomline       = false,
   leftline         = true,
-  innerleftmargin  = 10pt,
+  innerleftmargin  = 12pt,
   innerrightmargin = 10pt,
   innertopmargin   = 8pt,
   innerbottommargin= 8pt,
@@ -279,14 +272,14 @@
 }
 
 \mdfdefinestyle{warningstyle}{
-  backgroundcolor  = nswarning,
-  linecolor        = nswarningborder,
+  backgroundcolor  = warnbg,
+  linecolor        = warnbar,
   linewidth        = 3pt,
   topline          = false,
   rightline        = false,
   bottomline       = false,
   leftline         = true,
-  innerleftmargin  = 10pt,
+  innerleftmargin  = 12pt,
   innerrightmargin = 10pt,
   innertopmargin   = 8pt,
   innerbottommargin= 8pt,
@@ -294,27 +287,13 @@
   skipbelow        = 8pt,
 }
 
-\newenvironment{notebox}[1][Note]{%
-  \begin{mdframed}[style=notestyle]%
-  \noindent{\sffamily\bfseries\small\color{nsnoteborder}#1}\par\smallskip%
-  \small%
-}{\end{mdframed}}
-
-\newenvironment{warnbox}[1][Warning]{%
-  \begin{mdframed}[style=warningstyle]%
-  \noindent{\sffamily\bfseries\small\color{nswarningborder}#1}\par\smallskip%
-  \small%
-}{\end{mdframed}}
-
-%% ─── Inline code styling ─────────────────────────────────────────────────────
-\let\oldtexttt\texttt
-\renewcommand{\texttt}[1]{%
-  {\ttfamily\small\color{nsprimary}#1}%
+%% ─── Caption styling ─────────────────────────────────────────────────────────
+\captionsetup{
+  font       = {small, sf},
+  labelfont  = {bf, color=chapblue},
+  labelsep   = period,
+  skip       = 6pt
 }
-
-%% ─── Table styling ───────────────────────────────────────────────────────────
-\renewcommand{\arraystretch}{1.3}
-\setlength{\tabcolsep}{6pt}
 
 %% ─── List styling ────────────────────────────────────────────────────────────
 \setlist[itemize]{
@@ -330,31 +309,19 @@
   parsep     = 0pt
 }
 \setlist[description]{
-  font       = \sffamily\bfseries,
+  font       = {\sffamily\bfseries},
   leftmargin = 1.5em,
   topsep     = 4pt,
   itemsep    = 2pt
 }
 
-%% ─── Pandoc syntax highlighting support ─────────────────────────────────────
-$if(highlighting-macros)$
-$highlighting-macros$
-$endif$
+%% ─── Inline code ─────────────────────────────────────────────────────────────
+\let\OldTexttt\texttt
+\renewcommand{\texttt}[1]{%
+  {\small\ttfamily\color{chapblue}#1}%
+}
 
-%% Override Shaded background to match our code style
-\renewenvironment{Shaded}{\begin{mdframed}[
-  backgroundcolor=nscode,
-  linecolor=nscodeborder,
-  linewidth=0.8pt,
-  innerleftmargin=8pt,
-  innerrightmargin=8pt,
-  innertopmargin=6pt,
-  innerbottommargin=6pt,
-  skipabove=10pt,
-  skipbelow=6pt
-]}{\end{mdframed}}
-
-%% ─── Providecommand fallbacks ────────────────────────────────────────────────
+%% ─── Utility commands ────────────────────────────────────────────────────────
 \providecommand{\tightlist}{%
   \setlength{\itemsep}{2pt}\setlength{\parskip}{0pt}}
 
@@ -364,23 +331,25 @@ $endif$
 \newcommand{\maketitlepage}{%
   \thispagestyle{empty}%
   \begin{titlepage}
-    \vspace*{1.2in}
-    {\color{nsrule}\rule{\textwidth}{3pt}}\par
-    \vspace{16pt}
-    {\sffamily\fontsize{36}{40}\selectfont\bfseries\color{nsprimary}$title$}\par
-    \vspace{12pt}
-    {\color{nsrule}\rule{\textwidth}{1pt}}\par
-    \vspace{14pt}
+    \vspace*{0.6in}
+    {\color{rulegray}\rule{\textwidth}{1.5pt}}\par
+    \vspace{3pt}
+    {\color{chapblue}\rule{\textwidth}{6pt}}\par
+    \vspace{0.5in}
+    {\sffamily\fontsize{42}{48}\selectfont\bfseries\color{chapblue}$title$}\par
+    \vspace{0.18in}
     $if(subtitle)$
-    {\sffamily\Large\color{nslightgray}$subtitle$}\par
-    \vspace{40pt}
+    {\sffamily\Large\color{textgray}$subtitle$}\par
+    \vspace{0.4in}
     $endif$
     \vfill
-    {\sffamily\large\bfseries\color{nsprimary}$author$}\par
-    \vspace{6pt}
-    {\sffamily\normalsize\color{nslightgray}$date$}\par
-    \vspace{0.4in}
-    {\color{nsrule}\rule{\textwidth}{2pt}}
+    {\color{chapblue}\rule{\textwidth}{4pt}}\par
+    \vspace{3pt}
+    {\color{rulegray}\rule{\textwidth}{1pt}}\par
+    \vspace{0.25in}
+    {\sffamily\large\bfseries\color{chapblue}$author$}\par
+    \vspace{4pt}
+    {\sffamily\normalsize\color{textgray}$date$}
   \end{titlepage}
   \cleardoublepage
 }
@@ -392,8 +361,12 @@ $endif$
 \maketitlepage
 
 $if(toc)$
-\tableofcontents
-\cleardoublepage
+{
+  \hypersetup{hidelinks}
+  \setcounter{tocdepth}{$toc-depth$}
+  \tableofcontents
+  \cleardoublepage
+}
 $endif$
 
 \mainmatter
