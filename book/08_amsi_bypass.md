@@ -92,6 +92,7 @@ The obvious approach to patching ETW and AMSI is to find the function, use Virtu
 Defender's static scanner looks for this exact combination in a compiled binary: a DllImport for VirtualProtect alongside DllImports for GetModuleHandle and GetProcAddress in the same assembly. This triad (GetModuleHandle + GetProcAddress + VirtualProtect) is a named Defender signature pattern because virtually every AMSI bypass and ETW patch tool uses exactly these three imports together. Defenders calls this the "MpTest!amsi" detection cluster.
 
 Additionally, the classic patch bytes for each target are directly signatured:
+
 - ETW patch: `0x33 0xC0 0xC3` (xor eax,eax; ret) - 3 bytes, directly in the database
 - AMSI patch: `0xB8 0x57 0x00 0x07 0x80 0xC3` (mov eax, E_INVALIDARG; ret) - 6 bytes, directly in the database
 

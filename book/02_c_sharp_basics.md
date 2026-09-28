@@ -5,6 +5,7 @@
 You have a working lab from Document 01. Your dev box (ammulu, 192.168.10.150) has Visual Studio 2022 and the .NET SDK installed, with Defender disabled so compiled loaders are not quarantined. Your target machine (kimjongun, 192.168.10.100) has Defender running at full defaults. Your Kali VM (192.168.10.200) has msfvenom, python3, and smbclient. All three machines can ping each other on 192.168.10.0/24.
 
 At this point you know:
+
 - Why C# is the language for Windows evasion (Document 00)
 - How Defender's 6 detection layers work (Document 00)
 - Your lab is running with Defender at full default settings on the target (Document 01)

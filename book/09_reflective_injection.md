@@ -124,12 +124,14 @@ This is why these loaders are not standalone evasion tools. They are injection m
 The core evasion these loaders provide is not about bypassing Defender on their own. It is about changing where your shellcode runs.
 
 Without process injection, your shellcode runs in a custom process (syscall_loader.exe, or whatever you name your binary). That process stands out because:
+
 - It is an unknown binary that no one on the system recognizes
 - It appeared recently (not installed with the OS or any known software)
 - It is making network connections to an external IP address
 - It has a suspicious memory layout (executable memory that was not part of the original binary)
 
 With process injection, your shellcode runs inside a process that legitimately belongs on the system:
+
 - explorer.exe is the Windows desktop shell. It is always running.
 - svchost.exe is the service host. Multiple instances always run.
 - RuntimeBroker.exe manages Windows app permissions. It is always running.
@@ -143,6 +145,7 @@ The injection technique itself (OpenProcess, VirtualAllocEx, WriteProcessMemory,
 ### What You Need
 
 For both loaders, you need:
+
 1. The compiled loader binary (.exe)
 2. An encrypted shellcode file (encrypted.bin from Document 06)
 3. The XOR key from the encryption
@@ -448,6 +451,7 @@ static extern uint QueueUserAPC(
 ```
 
 QueueUserAPC is the function that makes Early Bird injection possible. It takes three parameters:
+
 - `pfnAPC`: the address of the function to run. We pass the address where we wrote our shellcode in the target process.
 - `hThread`: the thread to queue the APC on. We pass the main thread of the suspended process.
 - `dwData`: a parameter to pass to the APC function. We pass IntPtr.Zero because our shellcode does not need a parameter.

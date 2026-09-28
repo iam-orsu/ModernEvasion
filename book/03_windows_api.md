@@ -633,6 +633,7 @@ This has six parameters but only one matters for what we are doing:
 `IntPtr lpStartAddress` is the RAM address where the new thread starts executing. You pass the address from VirtualAlloc.
 
 The other five use default values:
+
 - `IntPtr.Zero` for lpThreadAttributes means default security settings
 - `0` for dwStackSize means default stack size (a stack is a small chunk of RAM each thread gets for its own temporary data)
 - `IntPtr.Zero` for lpParameter means no extra data passed to the thread
@@ -881,6 +882,7 @@ To interact with another running program, you first need a handle to it. OpenPro
 ```
 
 `dwDesiredAccess` specifies what you want to do with the process:
+
 - `0x0400` is PROCESS_QUERY_INFORMATION. You can read information about the process (its name, how much RAM it uses) but you cannot change anything inside it. This is safe.
 - `0x001FFFFF` is PROCESS_ALL_ACCESS. You get full control, including writing data into the process's RAM and creating threads inside it. The injection loaders use this.
 

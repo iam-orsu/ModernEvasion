@@ -360,16 +360,19 @@ Entry-level security analysts who run vulnerability scanners make $70K-$90K. Red
 You do not need programming experience. Document 02 teaches C# from scratch. But you do need:
 
 **Required knowledge:**
+
 - Basic computer literacy (installing software, navigating folders, using a terminal)
 - You know what an IP address is and what a port is
 - You have used Windows before (you know what Task Manager is, how to run programs from the command line)
 
 **Required hardware:**
+
 - A computer with at least 24 GB of RAM (three VMs run at the same time)
 - At least 150 GB free disk space
 - A processor with virtualization support (Intel VT-x or AMD-V, nearly all modern CPUs have this)
 
 **Required software (installed in Document 01):**
+
 - VMware Workstation Pro (free for personal use)
 - Windows 11 Pro ISO (free from Microsoft)
 - Kali Linux ISO (free from kali.org)

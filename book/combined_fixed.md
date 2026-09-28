@@ -360,16 +360,19 @@ Entry-level security analysts who run vulnerability scanners make $70K-$90K. Red
 You do not need programming experience. Document 02 teaches C# from scratch. But you do need:
 
 **Required knowledge:**
+
 - Basic computer literacy (installing software, navigating folders, using a terminal)
 - You know what an IP address is and what a port is
 - You have used Windows before (you know what Task Manager is, how to run programs from the command line)
 
 **Required hardware:**
+
 - A computer with at least 24 GB of RAM (three VMs run at the same time)
 - At least 150 GB free disk space
 - A processor with virtualization support (Intel VT-x or AMD-V, nearly all modern CPUs have this)
 
 **Required software (installed in Document 01):**
+
 - VMware Workstation Pro (free for personal use)
 - Windows 11 Pro ISO (free from Microsoft)
 - Kali Linux ISO (free from kali.org)
@@ -490,6 +493,7 @@ Start with Document 01 (lab/materials/01_lab_setup.md). It walks you through bui
 You have read Document 00 and you understand the full picture: why C# is the right language for Windows evasion, how Defender's 6 detection layers work, what each of the 8 loaders does, and how this curriculum connects to real red team jobs. You have not installed or set up anything yet.
 
 At this point you know:
+
 - C# gives you direct access to Windows functions through P/Invoke
 - Defender uses static file scanning, cloud analysis, AMSI, API hooks, ETW logging, and behavioral analysis
 - You will build 8 loaders, each targeting a specific detection layer
@@ -597,12 +601,14 @@ After installation, open VMware Workstation Pro. You will see the home screen wi
 VMware requires hardware virtualization (Intel VT-x or AMD-V) enabled in your host machine's BIOS/UEFI. The BIOS is a program stored on your motherboard that runs before your operating system loads. It controls basic hardware settings. Without virtualization enabled in the BIOS, VMs will be extremely slow or will not start at all.
 
 To check if virtualization is enabled on your host:
+
 1. Open Task Manager (Ctrl + Shift + Esc)
 2. Click the Performance tab
 3. Click CPU
 4. In the bottom-right section, look for "Virtualization: Enabled"
 
 If it says "Disabled":
+
 1. Restart your computer
 2. Enter BIOS/UEFI settings (the key varies by manufacturer: F2, Del, F10, F12, or Esc during boot. Your motherboard manual or a quick search for your model will tell you which key)
 3. Find the virtualization setting (it is usually under CPU Configuration, Advanced, or Security)
@@ -612,6 +618,7 @@ If it says "Disabled":
 ### Step 3: Create the Host-Only Network
 
 Before creating VMs, set up the isolated network:
+
 1. In VMware, go to Edit > Virtual Network Editor
 2. Click "Change Settings" (requires admin permissions)
 3. You should see a host-only network (usually VMnet1). If not, click "Add Network" and select a network, then set its type to "Host-only"
@@ -620,6 +627,7 @@ Before creating VMs, set up the isolated network:
    - Subnet mask: 255.255.255.0
    - Uncheck "Connect a host virtual adapter to this network" (this prevents your host from being on the lab network)
    - Uncheck "Use local DHCP service to distribute IP addresses" (you will assign fixed IPs instead of automatic ones)
+
 5. Click Apply and OK
 
 This creates an isolated virtual switch that only your VMs can access. No traffic reaches the internet or your real network.
@@ -635,6 +643,7 @@ Go to Microsoft's website and download the Windows 11 ISO. An ISO is a single fi
 ### Step 2: Create the Virtual Machine
 
 In VMware:
+
 1. Click "Create a New Virtual Machine"
 2. Select "Custom (advanced)". Do not use "Typical" because you need to control the hardware settings
 3. Hardware compatibility: select the latest available version
@@ -651,6 +660,7 @@ In VMware:
 14. Click Finish
 
 Before powering on, edit the VM settings:
+
 1. Go to VM > Settings
 2. Under Options > Advanced, make sure "Firmware type" is set to UEFI (Windows 11 requires UEFI, not legacy BIOS)
 3. Under Hardware > Add, add a "Trusted Platform Module" (TPM) if VMware prompts you. Windows 11 requires TPM 2.0. A TPM is a security chip that stores encryption keys. VMware can simulate this chip in software.
@@ -669,6 +679,7 @@ Power on the VM. The Windows 11 installer starts:
 8. Wait 15-30 minutes for installation
 
 During the out-of-box experience (OOBE), which is the first-time setup wizard that runs after Windows installs:
+
 1. Select your country/region
 2. Select your keyboard layout
 3. When asked to connect to a network: **choose "I don't have internet"** and then "Continue with limited setup". This is critical because it lets you create a local account instead of a Microsoft account. A local account is simpler for lab purposes.
@@ -708,6 +719,7 @@ This process may take 30-60 minutes depending on how many updates are available.
 Open Windows Security (click the shield icon in the system tray at the bottom-right of your screen, or search for "Windows Security" in the Start menu):
 
 **Virus & threat protection:**
+
 - Real-time protection: ON
 - Cloud-delivered protection: ON
 - Automatic sample submission: ON
@@ -716,13 +728,16 @@ Open Windows Security (click the shield icon in the system tray at the bottom-ri
 Click "Virus & threat protection updates" and then "Check for updates" to get the latest Defender signature database.
 
 **Firewall & network protection:**
+
 - Firewall should be ON for all profiles. Do NOT disable it. Later, you may need to allow specific rules for ping or specific ports, but the firewall stays active.
 
 **App & browser control:**
+
 - Smart App Control: this may be set to "Evaluation" on a fresh install. Leave it as-is.
 - SmartScreen: ON
 
 **Device security:**
+
 - Core isolation > Memory integrity: this may or may not be on depending on your CPU. Leave it at its default.
 
 **Do not change any of these settings.** The entire point is testing against production Defender. Take a note of all the settings so you can verify they have not changed during testing.
@@ -741,6 +756,7 @@ The target machine needs a fixed IP address so Kali and the dev box always know 
    - Subnet prefix length: **24** (this is the same as subnet mask 255.255.255.0)
    - Gateway: leave blank
    - Preferred DNS: leave blank
+
 7. Click Save
 
 To verify, open Command Prompt and run:
@@ -773,6 +789,7 @@ The dev box is your malware development machine. This is where Visual Studio 202
 You will use the same Windows 11 ISO you downloaded earlier.
 
 In VMware:
+
 1. Click "Create a New Virtual Machine"
 2. Select "Custom (advanced)"
 3. Select "Installer disc image file (iso)" and browse to the same Windows 11 ISO
@@ -791,6 +808,7 @@ Before powering on, edit VM settings and set UEFI firmware and add a TPM, same a
 Follow the same Windows 11 installation steps as the target machine, with one difference:
 
 During the OOBE (first-time setup):
+
 4. Enter the name: **ammulu** (not kimjongun, that is the target machine)
 5. Set a password you will remember
 
@@ -811,11 +829,13 @@ This is where the development tools go. Not on the target.
 5. Run the installer
 6. On the Workloads screen, check:
    - **.NET desktop development** (this installs the C# compiler, .NET SDK, and development tools for building console applications)
+
 7. Click Install. Wait for the 5-8 GB download and installation to complete.
 8. Launch Visual Studio once to complete initial setup (sign in or skip, choose a theme)
 9. Close Visual Studio after initial setup
 
 After Visual Studio is installed, remove the NAT network adapter:
+
 1. Go to VM > Settings
 2. Select the NAT network adapter you added
 3. Click Remove
@@ -853,6 +873,7 @@ This should show at least one SDK version installed.
    - Subnet prefix length: **24**
    - Gateway: leave blank
    - Preferred DNS: leave blank
+
 7. Click Save
 
 Verify with:
@@ -906,6 +927,7 @@ Go to kali.org/get-kali and download the latest Kali Linux installer ISO (64-bit
 ### Step 2: Create the Virtual Machine
 
 In VMware:
+
 1. Click "Create a New Virtual Machine"
 2. Select "Custom (advanced)"
 3. Select "Installer disc image file (iso)" and browse to the Kali ISO
@@ -919,6 +941,7 @@ In VMware:
 ### Step 3: Install Kali Linux
 
 Power on the VM:
+
 1. Select "Graphical install" from the boot menu
 2. Choose your language and region
 3. Hostname: **kali**
@@ -1102,6 +1125,7 @@ This transfer path (dev box to target) is the most important one in the curricul
 SMB is useful when you need bidirectional file transfer, especially when pulling files from Windows to Kali for analysis.
 
 Set up an SMB share on the target machine (kimjongun, 192.168.10.100):
+
 1. Create a folder: `C:\Share`
 2. Right-click the folder > Properties > Sharing tab > Share
 3. In the sharing dialog, type "Everyone" in the name field and click Add
@@ -1154,6 +1178,7 @@ Do NOT run this on the target machine (kimjongun). The target machine does not h
 Your lab is fully set up when every item on this list is verified:
 
 **Target Machine (kimjongun, 192.168.10.100):**
+
 - [ ] Windows 11 Pro installed and fully updated
 - [ ] Static IP set to 192.168.10.100
 - [ ] Defender real-time protection: ON
@@ -1166,6 +1191,7 @@ Your lab is fully set up when every item on this list is verified:
 - [ ] Snapshot taken ("Clean - Lab Ready")
 
 **Dev Box (ammulu, 192.168.10.150):**
+
 - [ ] Windows 11 Pro installed
 - [ ] Static IP set to 192.168.10.150
 - [ ] Defender DISABLED (real-time protection OFF, or disabled via Group Policy)
@@ -1176,6 +1202,7 @@ Your lab is fully set up when every item on this list is verified:
 - [ ] Snapshot taken ("Clean - Lab Ready")
 
 **Kali Linux VM (kali, 192.168.10.200):**
+
 - [ ] Kali Linux installed with default tools
 - [ ] Static IP set to 192.168.10.200
 - [ ] `msfvenom --version` works
@@ -1184,6 +1211,7 @@ Your lab is fully set up when every item on this list is verified:
 - [ ] Snapshot taken ("Clean - Lab Ready")
 
 **Network and Transfers:**
+
 - [ ] Kali can ping target (192.168.10.100) and dev box (192.168.10.150)
 - [ ] Target can ping dev box (192.168.10.150) and Kali (192.168.10.200)
 - [ ] Dev box can ping target (192.168.10.100) and Kali (192.168.10.200)
@@ -1208,6 +1236,7 @@ The file transfer setup means you can move files between all three machines quic
 ### Variation 1: Using VirtualBox Instead of VMware
 
 VirtualBox is free and works as a hypervisor, but it has weaker TPM emulation and less reliable host-only networking. If you use VirtualBox:
+
 - Create a "Host-only Network" in VirtualBox (File > Host Network Manager)
 - Set the network to 192.168.10.0/24 with no DHCP
 - When creating VMs, attach a "Host-only Adapter" pointing to that network
@@ -1218,6 +1247,7 @@ Everything else in the curriculum works the same regardless of hypervisor.
 ### Variation 2: Kali in WSL Instead of a Separate VM
 
 Windows Subsystem for Linux (WSL) can run Kali on your host machine. WSL is a feature that lets you run Linux programs inside Windows. The advantage is lower resource usage (no separate VM). The disadvantages:
+
 - WSL shares the host's network, so it is not isolated. Your test traffic goes through your real network adapter.
 - WSL has limited access to raw sockets and some network features that Metasploit needs.
 - The separation between attacker and target is blurred because both run on the same machine.
@@ -1227,6 +1257,7 @@ For learning, a separate Kali VM is better because it forces you to work across 
 ### Variation 3: Using Physical Machines
 
 If you have two physical computers and an isolated switch (no uplink to the internet), you can use physical hardware instead of VMs. The advantage is better performance. The disadvantages:
+
 - No snapshots. If something goes wrong, you reinstall from scratch.
 - You need a dedicated Windows 11 machine that you are willing to format and rebuild.
 - Physical machines are harder to reset between tests.
@@ -1259,6 +1290,7 @@ Start Document 02 (lab/materials/02_c_sharp_basics.md). It teaches C# programmin
 You have a working lab from Document 01. Your dev box (ammulu, 192.168.10.150) has Visual Studio 2022 and the .NET SDK installed, with Defender disabled so compiled loaders are not quarantined. Your target machine (kimjongun, 192.168.10.100) has Defender running at full defaults. Your Kali VM (192.168.10.200) has msfvenom, python3, and smbclient. All three machines can ping each other on 192.168.10.0/24.
 
 At this point you know:
+
 - Why C# is the language for Windows evasion (Document 00)
 - How Defender's 6 detection layers work (Document 00)
 - Your lab is running with Defender at full default settings on the target (Document 01)
@@ -3220,6 +3252,7 @@ This has six parameters but only one matters for what we are doing:
 `IntPtr lpStartAddress` is the RAM address where the new thread starts executing. You pass the address from VirtualAlloc.
 
 The other five use default values:
+
 - `IntPtr.Zero` for lpThreadAttributes means default security settings
 - `0` for dwStackSize means default stack size (a stack is a small chunk of RAM each thread gets for its own temporary data)
 - `IntPtr.Zero` for lpParameter means no extra data passed to the thread
@@ -3468,6 +3501,7 @@ To interact with another running program, you first need a handle to it. OpenPro
 ```
 
 `dwDesiredAccess` specifies what you want to do with the process:
+
 - `0x0400` is PROCESS_QUERY_INFORMATION. You can read information about the process (its name, how much RAM it uses) but you cannot change anything inside it. This is safe.
 - `0x001FFFFF` is PROCESS_ALL_ACCESS. You get full control, including writing data into the process's RAM and creating threads inside it. The injection loaders use this.
 
@@ -6294,6 +6328,7 @@ bytes 14-21: XX XX XX XX XX XX XX XX  gadget addr  (address of the syscall;ret i
 The gadget address is the address of `0F 05 C3` (syscall; ret) found by scanning ntdll's loaded memory. The `jmp [rip+0]` instruction reads the 8 bytes immediately after itself (because the offset is zero, and rip points past the instruction) and jumps to that address.
 
 When this stub runs:
+
 1. `mov r10, rcx` - copies the first function argument as Windows syscall convention requires
 2. `mov eax, SSN` - loads the syscall number that identifies which kernel function to call
 3. `jmp gadget_addr` - jumps to the real `syscall; ret` inside ntdll
@@ -6573,6 +6608,7 @@ GetProcAddress returns the address of the function in ntdll. We do NOT call thro
 ```
 
 This writes the 22-byte stub. The CPU reads these bytes as instructions:
+
 - `mov r10, rcx` (bytes 0-2): copies the first function argument as syscall convention requires
 - `mov eax, SSN` (bytes 3-7): loads the syscall number
 - `jmp [rip+0]` (bytes 8-13): reads the 8 bytes immediately after this instruction and jumps to that address
@@ -6980,6 +7016,7 @@ The obvious approach to patching ETW and AMSI is to find the function, use Virtu
 Defender's static scanner looks for this exact combination in a compiled binary: a DllImport for VirtualProtect alongside DllImports for GetModuleHandle and GetProcAddress in the same assembly. This triad (GetModuleHandle + GetProcAddress + VirtualProtect) is a named Defender signature pattern because virtually every AMSI bypass and ETW patch tool uses exactly these three imports together. Defenders calls this the "MpTest!amsi" detection cluster.
 
 Additionally, the classic patch bytes for each target are directly signatured:
+
 - ETW patch: `0x33 0xC0 0xC3` (xor eax,eax; ret) - 3 bytes, directly in the database
 - AMSI patch: `0xB8 0x57 0x00 0x07 0x80 0xC3` (mov eax, E_INVALIDARG; ret) - 6 bytes, directly in the database
 
@@ -7743,12 +7780,14 @@ This is why these loaders are not standalone evasion tools. They are injection m
 The core evasion these loaders provide is not about bypassing Defender on their own. It is about changing where your shellcode runs.
 
 Without process injection, your shellcode runs in a custom process (syscall_loader.exe, or whatever you name your binary). That process stands out because:
+
 - It is an unknown binary that no one on the system recognizes
 - It appeared recently (not installed with the OS or any known software)
 - It is making network connections to an external IP address
 - It has a suspicious memory layout (executable memory that was not part of the original binary)
 
 With process injection, your shellcode runs inside a process that legitimately belongs on the system:
+
 - explorer.exe is the Windows desktop shell. It is always running.
 - svchost.exe is the service host. Multiple instances always run.
 - RuntimeBroker.exe manages Windows app permissions. It is always running.
@@ -7762,6 +7801,7 @@ The injection technique itself (OpenProcess, VirtualAllocEx, WriteProcessMemory,
 ### What You Need
 
 For both loaders, you need:
+
 1. The compiled loader binary (.exe)
 2. An encrypted shellcode file (encrypted.bin from Document 06)
 3. The XOR key from the encryption
@@ -8067,6 +8107,7 @@ static extern uint QueueUserAPC(
 ```
 
 QueueUserAPC is the function that makes Early Bird injection possible. It takes three parameters:
+
 - `pfnAPC`: the address of the function to run. We pass the address where we wrote our shellcode in the target process.
 - `hThread`: the thread to queue the APC on. We pass the main thread of the suspended process.
 - `dwData`: a parameter to pass to the APC function. We pass IntPtr.Zero because our shellcode does not need a parameter.
@@ -9212,6 +9253,7 @@ You have been hired by a company to test their security. Your goal is to get acc
 For Defender-only environments, the phishing approach works well. The encrypted payload file (encrypted.bin) and the loader (stealth_loader.exe) both pass Defender's disk scan because the loader has a clean import table and the payload is XOR-encrypted.
 
 **Step 3: Execute.** Once the employee runs the loader (perhaps by clicking what they think is a report), Loader 08's six-step sequence runs:
+
 1. ETW is patched (no telemetry)
 2. AMSI is patched (no script scanning)
 3. Shellcode is decrypted in memory
@@ -9289,6 +9331,7 @@ You have access to several machines on the corporate network. Your goal now is t
 **ETW patching on every machine.** Each machine you access has its own ETW and AMSI. When you land on a new machine, your first action is to patch ETW and AMSI in your process before doing anything else. The execution order from Document 08 (ETW first, AMSI second) applies every time.
 
 **Network evasion is separate from host evasion.** This curriculum covers host-level evasion (bypassing Defender on the machine). Network-level evasion (hiding your traffic from firewalls, IDS/IPS, and network monitoring) is a separate discipline. Meterpreter's traffic over TCP looks like a standard reverse TCP connection. Network monitoring tools can detect this based on:
+
 - Connections to known-bad IP addresses
 - Unusual traffic patterns (periodic check-ins at regular intervals)
 - Traffic on unusual ports (4444 is a well-known Meterpreter default)
@@ -9307,6 +9350,7 @@ Your company runs an internal red vs blue exercise. The red team (you) tries to 
 **Speed matters.** In a lab, you can take your time. In a live exercise, the blue team is watching. Once you trigger any alert (even a minor one), the blue team starts investigating. They will look at the process tree, check running processes, examine network connections, and may push new detection rules. You need to move fast between access and establishing persistence.
 
 **Minimizing artifacts is critical.** Every file you drop to disk, every process you create, every network connection you make is an artifact that the blue team can find. The best approach is:
+
 - Drop the minimum number of files (ideally just the loader and encrypted payload)
 - Delete the files after execution (the shellcode is already in memory)
 - Use process injection to move your shellcode into a legitimate process
@@ -9405,6 +9449,7 @@ This curriculum covers host-level evasion against default Defender. A profession
 The logical next step after this curriculum depends on what part of red teaming you want to specialize in:
 
 **If you want to go deeper on evasion:**
+
 - Study indirect syscalls and implement them in C#
 - Build a custom C2 framework (even a simple one)
 - Learn sleep obfuscation techniques
@@ -9412,12 +9457,14 @@ The logical next step after this curriculum depends on what part of red teaming 
 - Practice with commercial EDR trial licenses in your lab
 
 **If you want to go wider on offensive security:**
+
 - Set up an Active Directory lab with a domain controller and multiple machines
 - Learn Kerberos attacks (Rubeus, Impacket)
 - Learn Azure AD and cloud attacks
 - Study web application exploitation (another common entry point)
 
 **Certifications that validate these skills:**
+
 - OSEP (Offensive Security Experienced Penetration Tester) covers evasion and advanced exploitation
 - CRTO (Certified Red Team Operator) from Zero-Point Security covers C2 frameworks and Active Directory
 - CRTL (Certified Red Team Lead) from Zero-Point Security for more advanced operations

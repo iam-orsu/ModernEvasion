@@ -116,6 +116,7 @@ bytes 14-21: XX XX XX XX XX XX XX XX  gadget addr  (address of the syscall;ret i
 The gadget address is the address of `0F 05 C3` (syscall; ret) found by scanning ntdll's loaded memory. The `jmp [rip+0]` instruction reads the 8 bytes immediately after itself (because the offset is zero, and rip points past the instruction) and jumps to that address.
 
 When this stub runs:
+
 1. `mov r10, rcx` - copies the first function argument as Windows syscall convention requires
 2. `mov eax, SSN` - loads the syscall number that identifies which kernel function to call
 3. `jmp gadget_addr` - jumps to the real `syscall; ret` inside ntdll
@@ -395,6 +396,7 @@ GetProcAddress returns the address of the function in ntdll. We do NOT call thro
 ```
 
 This writes the 22-byte stub. The CPU reads these bytes as instructions:
+
 - `mov r10, rcx` (bytes 0-2): copies the first function argument as syscall convention requires
 - `mov eax, SSN` (bytes 3-7): loads the syscall number
 - `jmp [rip+0]` (bytes 8-13): reads the 8 bytes immediately after this instruction and jumps to that address

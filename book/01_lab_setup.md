@@ -5,6 +5,7 @@
 You have read Document 00 and you understand the full picture: why C# is the right language for Windows evasion, how Defender's 6 detection layers work, what each of the 8 loaders does, and how this curriculum connects to real red team jobs. You have not installed or set up anything yet.
 
 At this point you know:
+
 - C# gives you direct access to Windows functions through P/Invoke
 - Defender uses static file scanning, cloud analysis, AMSI, API hooks, ETW logging, and behavioral analysis
 - You will build 8 loaders, each targeting a specific detection layer
@@ -112,12 +113,14 @@ After installation, open VMware Workstation Pro. You will see the home screen wi
 VMware requires hardware virtualization (Intel VT-x or AMD-V) enabled in your host machine's BIOS/UEFI. The BIOS is a program stored on your motherboard that runs before your operating system loads. It controls basic hardware settings. Without virtualization enabled in the BIOS, VMs will be extremely slow or will not start at all.
 
 To check if virtualization is enabled on your host:
+
 1. Open Task Manager (Ctrl + Shift + Esc)
 2. Click the Performance tab
 3. Click CPU
 4. In the bottom-right section, look for "Virtualization: Enabled"
 
 If it says "Disabled":
+
 1. Restart your computer
 2. Enter BIOS/UEFI settings (the key varies by manufacturer: F2, Del, F10, F12, or Esc during boot. Your motherboard manual or a quick search for your model will tell you which key)
 3. Find the virtualization setting (it is usually under CPU Configuration, Advanced, or Security)
@@ -127,6 +130,7 @@ If it says "Disabled":
 ### Step 3: Create the Host-Only Network
 
 Before creating VMs, set up the isolated network:
+
 1. In VMware, go to Edit > Virtual Network Editor
 2. Click "Change Settings" (requires admin permissions)
 3. You should see a host-only network (usually VMnet1). If not, click "Add Network" and select a network, then set its type to "Host-only"
@@ -135,6 +139,7 @@ Before creating VMs, set up the isolated network:
    - Subnet mask: 255.255.255.0
    - Uncheck "Connect a host virtual adapter to this network" (this prevents your host from being on the lab network)
    - Uncheck "Use local DHCP service to distribute IP addresses" (you will assign fixed IPs instead of automatic ones)
+
 5. Click Apply and OK
 
 This creates an isolated virtual switch that only your VMs can access. No traffic reaches the internet or your real network.
@@ -150,6 +155,7 @@ Go to Microsoft's website and download the Windows 11 ISO. An ISO is a single fi
 ### Step 2: Create the Virtual Machine
 
 In VMware:
+
 1. Click "Create a New Virtual Machine"
 2. Select "Custom (advanced)". Do not use "Typical" because you need to control the hardware settings
 3. Hardware compatibility: select the latest available version
@@ -166,6 +172,7 @@ In VMware:
 14. Click Finish
 
 Before powering on, edit the VM settings:
+
 1. Go to VM > Settings
 2. Under Options > Advanced, make sure "Firmware type" is set to UEFI (Windows 11 requires UEFI, not legacy BIOS)
 3. Under Hardware > Add, add a "Trusted Platform Module" (TPM) if VMware prompts you. Windows 11 requires TPM 2.0. A TPM is a security chip that stores encryption keys. VMware can simulate this chip in software.
@@ -184,6 +191,7 @@ Power on the VM. The Windows 11 installer starts:
 8. Wait 15-30 minutes for installation
 
 During the out-of-box experience (OOBE), which is the first-time setup wizard that runs after Windows installs:
+
 1. Select your country/region
 2. Select your keyboard layout
 3. When asked to connect to a network: **choose "I don't have internet"** and then "Continue with limited setup". This is critical because it lets you create a local account instead of a Microsoft account. A local account is simpler for lab purposes.
@@ -223,6 +231,7 @@ This process may take 30-60 minutes depending on how many updates are available.
 Open Windows Security (click the shield icon in the system tray at the bottom-right of your screen, or search for "Windows Security" in the Start menu):
 
 **Virus & threat protection:**
+
 - Real-time protection: ON
 - Cloud-delivered protection: ON
 - Automatic sample submission: ON
@@ -231,13 +240,16 @@ Open Windows Security (click the shield icon in the system tray at the bottom-ri
 Click "Virus & threat protection updates" and then "Check for updates" to get the latest Defender signature database.
 
 **Firewall & network protection:**
+
 - Firewall should be ON for all profiles. Do NOT disable it. Later, you may need to allow specific rules for ping or specific ports, but the firewall stays active.
 
 **App & browser control:**
+
 - Smart App Control: this may be set to "Evaluation" on a fresh install. Leave it as-is.
 - SmartScreen: ON
 
 **Device security:**
+
 - Core isolation > Memory integrity: this may or may not be on depending on your CPU. Leave it at its default.
 
 **Do not change any of these settings.** The entire point is testing against production Defender. Take a note of all the settings so you can verify they have not changed during testing.
@@ -256,6 +268,7 @@ The target machine needs a fixed IP address so Kali and the dev box always know 
    - Subnet prefix length: **24** (this is the same as subnet mask 255.255.255.0)
    - Gateway: leave blank
    - Preferred DNS: leave blank
+
 7. Click Save
 
 To verify, open Command Prompt and run:
@@ -288,6 +301,7 @@ The dev box is your malware development machine. This is where Visual Studio 202
 You will use the same Windows 11 ISO you downloaded earlier.
 
 In VMware:
+
 1. Click "Create a New Virtual Machine"
 2. Select "Custom (advanced)"
 3. Select "Installer disc image file (iso)" and browse to the same Windows 11 ISO
@@ -306,6 +320,7 @@ Before powering on, edit VM settings and set UEFI firmware and add a TPM, same a
 Follow the same Windows 11 installation steps as the target machine, with one difference:
 
 During the OOBE (first-time setup):
+
 4. Enter the name: **ammulu** (not kimjongun, that is the target machine)
 5. Set a password you will remember
 
@@ -326,11 +341,13 @@ This is where the development tools go. Not on the target.
 5. Run the installer
 6. On the Workloads screen, check:
    - **.NET desktop development** (this installs the C# compiler, .NET SDK, and development tools for building console applications)
+
 7. Click Install. Wait for the 5-8 GB download and installation to complete.
 8. Launch Visual Studio once to complete initial setup (sign in or skip, choose a theme)
 9. Close Visual Studio after initial setup
 
 After Visual Studio is installed, remove the NAT network adapter:
+
 1. Go to VM > Settings
 2. Select the NAT network adapter you added
 3. Click Remove
@@ -368,6 +385,7 @@ This should show at least one SDK version installed.
    - Subnet prefix length: **24**
    - Gateway: leave blank
    - Preferred DNS: leave blank
+
 7. Click Save
 
 Verify with:
@@ -421,6 +439,7 @@ Go to kali.org/get-kali and download the latest Kali Linux installer ISO (64-bit
 ### Step 2: Create the Virtual Machine
 
 In VMware:
+
 1. Click "Create a New Virtual Machine"
 2. Select "Custom (advanced)"
 3. Select "Installer disc image file (iso)" and browse to the Kali ISO
@@ -434,6 +453,7 @@ In VMware:
 ### Step 3: Install Kali Linux
 
 Power on the VM:
+
 1. Select "Graphical install" from the boot menu
 2. Choose your language and region
 3. Hostname: **kali**
@@ -617,6 +637,7 @@ This transfer path (dev box to target) is the most important one in the curricul
 SMB is useful when you need bidirectional file transfer, especially when pulling files from Windows to Kali for analysis.
 
 Set up an SMB share on the target machine (kimjongun, 192.168.10.100):
+
 1. Create a folder: `C:\Share`
 2. Right-click the folder > Properties > Sharing tab > Share
 3. In the sharing dialog, type "Everyone" in the name field and click Add
@@ -669,6 +690,7 @@ Do NOT run this on the target machine (kimjongun). The target machine does not h
 Your lab is fully set up when every item on this list is verified:
 
 **Target Machine (kimjongun, 192.168.10.100):**
+
 - [ ] Windows 11 Pro installed and fully updated
 - [ ] Static IP set to 192.168.10.100
 - [ ] Defender real-time protection: ON
@@ -681,6 +703,7 @@ Your lab is fully set up when every item on this list is verified:
 - [ ] Snapshot taken ("Clean - Lab Ready")
 
 **Dev Box (ammulu, 192.168.10.150):**
+
 - [ ] Windows 11 Pro installed
 - [ ] Static IP set to 192.168.10.150
 - [ ] Defender DISABLED (real-time protection OFF, or disabled via Group Policy)
@@ -691,6 +714,7 @@ Your lab is fully set up when every item on this list is verified:
 - [ ] Snapshot taken ("Clean - Lab Ready")
 
 **Kali Linux VM (kali, 192.168.10.200):**
+
 - [ ] Kali Linux installed with default tools
 - [ ] Static IP set to 192.168.10.200
 - [ ] `msfvenom --version` works
@@ -699,6 +723,7 @@ Your lab is fully set up when every item on this list is verified:
 - [ ] Snapshot taken ("Clean - Lab Ready")
 
 **Network and Transfers:**
+
 - [ ] Kali can ping target (192.168.10.100) and dev box (192.168.10.150)
 - [ ] Target can ping dev box (192.168.10.150) and Kali (192.168.10.200)
 - [ ] Dev box can ping target (192.168.10.100) and Kali (192.168.10.200)
@@ -723,6 +748,7 @@ The file transfer setup means you can move files between all three machines quic
 ### Variation 1: Using VirtualBox Instead of VMware
 
 VirtualBox is free and works as a hypervisor, but it has weaker TPM emulation and less reliable host-only networking. If you use VirtualBox:
+
 - Create a "Host-only Network" in VirtualBox (File > Host Network Manager)
 - Set the network to 192.168.10.0/24 with no DHCP
 - When creating VMs, attach a "Host-only Adapter" pointing to that network
@@ -733,6 +759,7 @@ Everything else in the curriculum works the same regardless of hypervisor.
 ### Variation 2: Kali in WSL Instead of a Separate VM
 
 Windows Subsystem for Linux (WSL) can run Kali on your host machine. WSL is a feature that lets you run Linux programs inside Windows. The advantage is lower resource usage (no separate VM). The disadvantages:
+
 - WSL shares the host's network, so it is not isolated. Your test traffic goes through your real network adapter.
 - WSL has limited access to raw sockets and some network features that Metasploit needs.
 - The separation between attacker and target is blurred because both run on the same machine.
@@ -742,6 +769,7 @@ For learning, a separate Kali VM is better because it forces you to work across 
 ### Variation 3: Using Physical Machines
 
 If you have two physical computers and an isolated switch (no uplink to the internet), you can use physical hardware instead of VMs. The advantage is better performance. The disadvantages:
+
 - No snapshots. If something goes wrong, you reinstall from scratch.
 - You need a dedicated Windows 11 machine that you are willing to format and rebuild.
 - Physical machines are harder to reset between tests.

@@ -45,6 +45,7 @@ You have been hired by a company to test their security. Your goal is to get acc
 For Defender-only environments, the phishing approach works well. The encrypted payload file (encrypted.bin) and the loader (stealth_loader.exe) both pass Defender's disk scan because the loader has a clean import table and the payload is XOR-encrypted.
 
 **Step 3: Execute.** Once the employee runs the loader (perhaps by clicking what they think is a report), Loader 08's six-step sequence runs:
+
 1. ETW is patched (no telemetry)
 2. AMSI is patched (no script scanning)
 3. Shellcode is decrypted in memory
@@ -122,6 +123,7 @@ You have access to several machines on the corporate network. Your goal now is t
 **ETW patching on every machine.** Each machine you access has its own ETW and AMSI. When you land on a new machine, your first action is to patch ETW and AMSI in your process before doing anything else. The execution order from Document 08 (ETW first, AMSI second) applies every time.
 
 **Network evasion is separate from host evasion.** This curriculum covers host-level evasion (bypassing Defender on the machine). Network-level evasion (hiding your traffic from firewalls, IDS/IPS, and network monitoring) is a separate discipline. Meterpreter's traffic over TCP looks like a standard reverse TCP connection. Network monitoring tools can detect this based on:
+
 - Connections to known-bad IP addresses
 - Unusual traffic patterns (periodic check-ins at regular intervals)
 - Traffic on unusual ports (4444 is a well-known Meterpreter default)
@@ -140,6 +142,7 @@ Your company runs an internal red vs blue exercise. The red team (you) tries to 
 **Speed matters.** In a lab, you can take your time. In a live exercise, the blue team is watching. Once you trigger any alert (even a minor one), the blue team starts investigating. They will look at the process tree, check running processes, examine network connections, and may push new detection rules. You need to move fast between access and establishing persistence.
 
 **Minimizing artifacts is critical.** Every file you drop to disk, every process you create, every network connection you make is an artifact that the blue team can find. The best approach is:
+
 - Drop the minimum number of files (ideally just the loader and encrypted payload)
 - Delete the files after execution (the shellcode is already in memory)
 - Use process injection to move your shellcode into a legitimate process
@@ -238,6 +241,7 @@ This curriculum covers host-level evasion against default Defender. A profession
 The logical next step after this curriculum depends on what part of red teaming you want to specialize in:
 
 **If you want to go deeper on evasion:**
+
 - Study indirect syscalls and implement them in C#
 - Build a custom C2 framework (even a simple one)
 - Learn sleep obfuscation techniques
@@ -245,12 +249,14 @@ The logical next step after this curriculum depends on what part of red teaming 
 - Practice with commercial EDR trial licenses in your lab
 
 **If you want to go wider on offensive security:**
+
 - Set up an Active Directory lab with a domain controller and multiple machines
 - Learn Kerberos attacks (Rubeus, Impacket)
 - Learn Azure AD and cloud attacks
 - Study web application exploitation (another common entry point)
 
 **Certifications that validate these skills:**
+
 - OSEP (Offensive Security Experienced Penetration Tester) covers evasion and advanced exploitation
 - CRTO (Certified Red Team Operator) from Zero-Point Security covers C2 frameworks and Active Directory
 - CRTL (Certified Red Team Lead) from Zero-Point Security for more advanced operations
