@@ -22,7 +22,7 @@ You do not need to learn all of C#. You need a specific set of skills: storing a
 
 C# is a programming language made by Microsoft. You write code in a text file ending with .cs, and the compiler turns it into a program you can run. The compiled program runs on the .NET runtime, which is pre-installed on every Windows machine. This is one of the reasons C# is ideal for evasion: you do not need to install anything on the target machine to run your code.
 
-When you compile C# code, the compiler produces something called MSIL (Microsoft Intermediate Language), not the raw machine instructions your CPU understands. The .NET runtime translates MSIL to machine instructions when you run the program. The important thing for evasion is that the compiled file contains readable information about your code: the names of your classes, the names of your functions, and every piece of text you put in quotes in your code. All of that sits in the compiled file where Defender can read it. This is why naming things matters, and why later documents teach you to avoid putting sensitive words in your code.
+When you compile C# code, the compiler produces something called MSIL (Microsoft Intermediate Language), not the raw machine instructions your CPU understands. The .NET runtime translates MSIL to machine instructions when you run the program. The important thing for evasion is that the compiled .exe file contains readable information about your code sitting directly on your hard drive. You can open the compiled .exe in Notepad right now and you will literally see the class name, the function names, and every piece of text you put in double quotes sitting there as readable text inside all the garbage characters. Defender opens that .exe file, reads the whole thing from start to end, and checks whether any of those names or strings match something in its database of known bad names. This is why naming things matters, and why later documents teach you to avoid putting sensitive words in your code.
 
 ## What Defender Does
 
@@ -644,7 +644,7 @@ Output:
 
 Now that you understand variables, arrays, loops, and functions, you are ready for the first concept that directly connects to evasion.
 
-Here is the problem. Defender has a database of byte patterns that belong to known malware. When your shellcode sits in a file on disk, Defender reads the file, compares its bytes against the database, and if there is a match, it blocks the file. So you need a way to change the bytes in the file so Defender does not recognize them, but your loader can change them back when it is time to run the code.
+Here is the problem. Defender has a database of byte patterns that belong to known malware. When your shellcode sits in a file on your hard drive, Defender opens that file, reads the whole thing from start to end, and checks whether any bytes match something in its database of known bad patterns. If there is a match, it blocks the file. So you need a way to change the bytes in the file so Defender does not recognize them, but your loader can change them back when it is time to run the code.
 
 The solution is XOR, which stands for "exclusive or." XOR is an operation you perform on two numbers. The practical thing you need to know is this: if you XOR a number with a key, you get a different number. If you XOR that result with the same key again, you get the original number back. XOR is both the lock and the key.
 
@@ -759,7 +759,7 @@ Encrypted: B6 02 C9 AE BA
 Decrypted: FC 48 83 E4 F0
 ```
 
-The encrypted bytes (B6 02 C9 AE BA) are completely different from the original (FC 48 83 E4 F0). Defender has no signature for B6 02 C9 AE BA because it is not real shellcode, it is encrypted data. When the loader runs, it decrypts the data in RAM and then executes it. Defender's file scanner only sees the encrypted version on disk.
+The encrypted bytes (B6 02 C9 AE BA) are completely different from the original (FC 48 83 E4 F0). Defender has no signature for B6 02 C9 AE BA because it is not real shellcode, it is encrypted data. When the loader runs, it decrypts the data in RAM and then executes it. Defender's file scanner only sees the encrypted version sitting on your hard drive, which matches nothing in its database.
 
 ### Part 8: Multi-Byte XOR Keys
 
@@ -791,7 +791,7 @@ The function takes two byte arrays: the data to encrypt/decrypt, and the key. It
 
 Return the encrypted (or decrypted) result.
 
-This function is called `TransformData` in the loaders, not `XorEncrypt` or `XorDecrypt`, because Defender's scanner flags binaries that contain method names with "Xor" or "Encrypt" in them. The function works the same regardless of what you name it. Using a neutral name is one of the simplest evasion techniques.
+This function is called `TransformData` in the loaders, not `XorEncrypt` or `XorDecrypt`. When you compile a C# program, every function name you write gets stored as readable text inside the .exe file on your hard drive. You can open the compiled .exe in Notepad right now and you will literally see `XorEncrypt` or `XorDecrypt` sitting there as readable text inside all the garbage characters. Defender opens that .exe file, reads the whole thing from start to end, and checks whether any text inside it matches strings in its database of known bad names. `XorDecrypt` is in that database because every offensive C# tool has used that name. Changing the name to `TransformData` means the .exe file on your hard drive contains `TransformData` instead, and Defender finds no match. The function works exactly the same regardless of what you name it.
 
 Here is the complete program:
 
@@ -845,7 +845,7 @@ The key `{0x4A, 0x7F, 0x2B, 0x1C}` is 4 bytes. It encrypts 8 bytes of shellcode 
 
 ### Part 9: Reading and Writing Files
 
-Every loader reads a file from disk. The shellcode (encrypted or not) lives in a binary file, and the loader reads it into a byte array. C# makes this simple with two functions.
+Every loader reads a file from your hard drive. The shellcode (encrypted or not) lives in a binary file, and the loader reads it into a byte array. C# makes this simple with two functions.
 
 ```csharp
 using System.IO;
@@ -858,7 +858,7 @@ First, add `System.IO` at the top of your file. IO stands for Input/Output and c
         File.WriteAllBytes("test.bin", testData);
 ```
 
-`File.WriteAllBytes` takes a file path and a byte array, and writes the bytes to a file. If the file does not exist, it creates it. If it exists, it overwrites it. After this line, there is a file called test.bin on disk containing those 5 bytes.
+`File.WriteAllBytes` takes a file path and a byte array, and writes the bytes to a file. If the file does not exist, it creates it. If it exists, it overwrites it. After this line, there is a file called test.bin on your hard drive containing those 5 bytes.
 
 ```csharp
         byte[] loaded = File.ReadAllBytes("test.bin");
@@ -1156,7 +1156,7 @@ The address will be different every time you run it because the operating system
 
 ### Part 12: Building Strings from Numbers (Avoiding Static Detection)
 
-This last section connects directly to evasion. In Loaders 04, 07, and 08, the code needs to reference specific Windows function names like "AmsiScanBuffer" and "EtwEventWrite". If you write those names as strings in your code, they appear in the compiled binary exactly as written. Defender scans binaries for known function names associated with malware, and "AmsiScanBuffer" is on the list.
+This last section connects directly to evasion. In Loaders 04, 07, and 08, the code needs to reference specific Windows function names like "AmsiScanBuffer" and "EtwEventWrite". If you write `string funcName = "AmsiScanBuffer";` in your code and compile it, that exact text gets written into the .exe file on your hard drive. You can open the compiled .exe in Notepad right now and you will literally see `AmsiScanBuffer` sitting there as readable text inside all the garbage characters. Defender opens that .exe file, reads the whole thing from start to end, and checks whether any text inside it matches strings in its database of known bad names. `AmsiScanBuffer` is in that database.
 
 The solution: instead of storing the string, store the numbers that correspond to each character. Every character has a numeric value (its ASCII code). 'A' is 65, 'B' is 66, 'a' is 97, and so on. If you store the numbers and build the string at runtime, the string never appears in the compiled file.
 
@@ -1192,7 +1192,7 @@ The `params` keyword means you can pass any number of values and C# automaticall
 
 And C# treats `33, 77, 83, 73` as the array `{33, 77, 83, 73}`.
 
-The compiled binary contains the numbers 32, 33, 77, 83, 73, which are meaningless to Defender's scanner. The string "Amsi" is constructed only at runtime, in RAM, where the static file scanner cannot see it.
+The compiled .exe on your hard drive contains only the numbers 32, 33, 77, 83, 73. You can open it in Notepad and you will NOT see "Amsi" anywhere. You will only see those integer values sitting in the file, which Defender's database has no entry for. The string "Amsi" is assembled character by character in RAM only when the program runs, and the file scanner never looks at RAM.
 
 Here is the complete program:
 
@@ -1230,7 +1230,7 @@ Built: kernel32.dll
 Built: ntdll
 ```
 
-The strings "AmsiScanBuffer", "kernel32.dll", and "ntdll" exist only when the program runs. They are not stored anywhere in the compiled file. This is how the loaders reference sensitive Windows function and DLL names without triggering Defender's static analysis.
+The strings "AmsiScanBuffer", "kernel32.dll", and "ntdll" exist only when the program runs, built in RAM from integer arithmetic. They are not stored anywhere in the .exe file on your hard drive. Defender opens that .exe, reads the whole thing from start to end, and finds only integer constants. The file scanner has nothing to match against. This is how the loaders reference sensitive Windows function and DLL names without triggering Defender's static scanner.
 
 ## Compilation and Execution
 
@@ -1274,7 +1274,7 @@ You now know enough C# to understand every loader in this curriculum. Here is sp
 
 **Functions** organize code into reusable pieces. TransformData handles XOR. HexToBytes converts command-line keys. FromOffsets builds strings. PatchTelemetry disables ETW. PatchScanner disables AMSI. Each piece of functionality is a function.
 
-**File reading** gets shellcode from disk into RAM. Every loader starts by reading a .bin file with File.ReadAllBytes.
+**File reading** gets shellcode from your hard drive into RAM. Every loader starts by reading a .bin file with File.ReadAllBytes.
 
 **Command-line arguments** make the loaders flexible. The same binary works with different payloads, different keys, and different target processes.
 
@@ -1312,7 +1312,7 @@ C# has powerful features like LINQ, async/await, generics, and lambda expression
 
 The C# concepts in this document create specific detection opportunities for defenders:
 
-**String scanning.** Defenders can scan .NET binaries for suspicious strings. If a compiled program contains "shellcode", "inject", "bypass", or Windows function names like "AmsiScanBuffer", that is a strong malware indicator. Tools like YARA with .NET-aware rules can automate this.
+**String scanning.** Defenders can scan .NET binaries sitting on the hard drive for suspicious strings. If a compiled .exe contains "shellcode", "inject", "bypass", or Windows function names like "AmsiScanBuffer", that is a strong malware indicator. Tools like YARA with .NET-aware rules can automate this.
 
 Blue team action: deploy YARA rules that match known offensive C# tool strings. Florian Roth's signature-base repository has rules for this.
 
